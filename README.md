@@ -1,0 +1,74 @@
+# Daily Links
+
+Tiny shared web app for tracking job application links. Paste URLs in bulk, the app
+fetches each page and pulls out company/title/source, then displays them as a clean
+checklist with a status chip per item. Protected by a single shared password.
+
+## Stack
+
+- Next.js 14 (App Router, TypeScript)
+- Tailwind CSS
+- Neon Postgres (via Vercel's native Neon integration)
+- Deployed on Vercel
+
+## How it works
+
+- One shared password gated by middleware. On login, an HMAC-signed cookie is set.
+- Bulk-paste URLs in a textarea. The server fetches each URL, parses OG/twitter
+  meta tags plus hostname-specific patterns (Greenhouse, Lever, Ashby, Workday,
+  SmartRecruiters, LinkedIn, Indeed, etc.) to extract company and title.
+- Each row has a checkmark plus a status dropdown (To do, Applied, Interview,
+  Rejected, Offer). Inline edit lets you fix the parsed company/title.
+- Duplicate URLs are skipped on add.
+
+## Local development
+
+```bash
+npm install
+cp .env.example .env.local
+# Fill in APP_PASSWORD, AUTH_SECRET, and DATABASE_URL
+npm run db:init
+npm run dev
+```
+
+`AUTH_SECRET` should be a long random string. Generate one with:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+## Deploying to Vercel
+
+1. Push this repo to GitHub.
+2. Create a new project on Vercel pointing at the repo.
+3. In the project's **Storage** tab, create a new **Neon Postgres** database and
+   connect it to the project. Vercel will inject `DATABASE_URL` automatically.
+4. In **Settings -> Environment Variables**, add:
+   - `APP_PASSWORD` (the shared password)
+   - `AUTH_SECRET` (a long random hex string)
+5. Trigger a deploy. After the first deploy, run the DB init script once:
+   ```bash
+   vercel link            # link this directory to the Vercel project
+   vercel env pull .env.local
+   npm run db:init        # uses the pulled env vars to create the table
+   ```
+   Or run the SQL from `scripts/init-db.ts` directly in the Neon SQL console.
+
+## Routes
+
+- `GET /` main list (auth-gated)
+- `GET /login` password entry
+- `POST /api/auth` create session (body: `{ password }`)
+- `DELETE /api/auth` sign out
+- `GET /api/links` list all links
+- `POST /api/links` bulk add (body: `{ text: "url1\nurl2\n..." }`)
+- `PATCH /api/links/[id]` update status / notes / company / title
+- `DELETE /api/links/[id]` remove a link
+
+## Notes
+
+- Server-side URL fetch has a 6 second timeout. If a site blocks the bot, the
+  link still gets added with just a hostname fallback. You can fix the
+  company/title with the inline edit.
+- The auth cookie lasts 30 days.
+- `robots` is set to `noindex, nofollow`.

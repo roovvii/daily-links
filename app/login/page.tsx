@@ -1,0 +1,63 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+
+export default function LoginPage() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const next = params.get("next") || "/";
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    startTransition(async () => {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Login failed");
+        return;
+      }
+      router.replace(next);
+      router.refresh();
+    });
+  }
+
+  return (
+    <main className="flex min-h-screen items-center justify-center px-4">
+      <form
+        onSubmit={onSubmit}
+        className="w-full max-w-sm space-y-4 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+      >
+        <div>
+          <h1 className="text-lg font-semibold">Daily Links</h1>
+          <p className="text-sm text-neutral-500">Enter the shared password to continue.</p>
+        </div>
+        <input
+          type="password"
+          autoFocus
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Password"
+          className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-950"
+        />
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <button
+          type="submit"
+          disabled={pending}
+          className="w-full rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-60 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
+        >
+          {pending ? "Signing in..." : "Sign in"}
+        </button>
+      </form>
+    </main>
+  );
+}
