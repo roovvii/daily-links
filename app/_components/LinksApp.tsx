@@ -200,13 +200,8 @@ export function LinksApp({
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 lg:px-6">
-      <header className="mb-6 flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Daily Links</h1>
-          <p className="text-sm text-neutral-500">
-            {counts.active} active, {counts.review} for review, {counts.done} done, {counts.total} total
-          </p>
-        </div>
+      <header className="mb-4 flex items-start justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">Daily Links</h1>
         <button
           onClick={signOut}
           className="text-xs text-neutral-500 underline-offset-2 hover:underline"
@@ -214,6 +209,13 @@ export function LinksApp({
           Sign out
         </button>
       </header>
+
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatTile label="Active" value={counts.active} accent="neutral" />
+        <StatTile label="Needs review" value={counts.review} accent="amber" />
+        <StatTile label="Done" value={counts.done} accent="emerald" />
+        <StatTile label="Total" value={counts.total} accent="muted" />
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <main className="min-w-0">
@@ -317,6 +319,43 @@ export function LinksApp({
           <ClockCard />
           <UpdatesCard role={role} />
         </aside>
+      </div>
+    </div>
+  );
+}
+
+function StatTile({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number;
+  accent: "neutral" | "amber" | "emerald" | "muted";
+}) {
+  const valueClass =
+    accent === "amber"
+      ? "text-amber-700 dark:text-amber-300"
+      : accent === "emerald"
+      ? "text-emerald-700 dark:text-emerald-400"
+      : accent === "muted"
+      ? "text-neutral-500 dark:text-neutral-500"
+      : "text-neutral-900 dark:text-neutral-100";
+  const borderClass =
+    accent === "amber"
+      ? "border-amber-200 dark:border-amber-900/60"
+      : accent === "emerald"
+      ? "border-emerald-200 dark:border-emerald-900/60"
+      : "border-neutral-200 dark:border-neutral-800";
+  return (
+    <div
+      className={`rounded-lg border bg-white p-4 dark:bg-neutral-900 ${borderClass}`}
+    >
+      <div className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+        {label}
+      </div>
+      <div className={`mt-1 font-mono text-3xl font-semibold tabular-nums ${valueClass}`}>
+        {value}
       </div>
     </div>
   );
