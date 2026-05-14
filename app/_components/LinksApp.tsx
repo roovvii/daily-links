@@ -341,7 +341,7 @@ function StatTile({
       ? "text-neutral-500 dark:text-neutral-400"
       : "text-neutral-900 dark:text-neutral-100";
   return (
-    <div className="flex aspect-square flex-col items-center justify-center rounded-xl border border-neutral-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-900 sm:aspect-auto sm:min-h-[112px]">
+    <div className="flex aspect-square flex-col items-center justify-center rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900 sm:aspect-auto sm:min-h-[112px]">
       <div className={`font-mono text-4xl font-semibold tabular-nums leading-none ${valueClass}`}>
         {value}
       </div>
