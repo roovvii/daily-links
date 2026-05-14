@@ -39,6 +39,7 @@ export function UpdatesCard({ role }: { role: Role }) {
   const [lastSeen, setLastSeen] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => new Date());
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60000);
@@ -76,37 +77,48 @@ export function UpdatesCard({ role }: { role: Role }) {
     return count;
   }, [sessions, lastSeen, role]);
 
-  // Mark seen a few seconds after load so the user has time to register the unread dots.
-  useEffect(() => {
-    if (loading || unreadCount === 0) return;
-    const id = setTimeout(async () => {
+  async function toggleOpen() {
+    const next = !open;
+    setOpen(next);
+    if (next && unreadCount > 0) {
       try {
-        await fetch("/api/events", { method: "POST" });
+        const res = await fetch("/api/events", { method: "POST" });
+        if (res.ok) {
+          const data = await res.json();
+          setLastSeen((data.seenAt as string) ?? new Date().toISOString());
+        }
       } catch {
         // ignore
       }
-    }, 4000);
-    return () => clearTimeout(id);
-  }, [loading, unreadCount]);
+    }
+  }
 
   return (
     <div className="rounded-lg border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-      <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2.5 dark:border-neutral-800">
-        <span className="text-sm font-medium">Recent updates</span>
-        {unreadCount > 0 && (
-          <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-medium text-white">
-            {unreadCount} new
-          </span>
-        )}
-      </div>
+      <button
+        onClick={toggleOpen}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+      >
+        <span className="flex items-center gap-2">
+          <span className="text-sm font-medium">Recent updates</span>
+          {unreadCount > 0 && (
+            <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-medium text-white">
+              {unreadCount} new
+            </span>
+          )}
+        </span>
+        <span className="text-xs text-neutral-400">{open ? "▾" : "▸"}</span>
+      </button>
 
-      {loading ? (
-        <p className="px-3 py-4 text-xs text-neutral-500">Loading...</p>
-      ) : sessions.length === 0 ? (
-        <p className="px-3 py-6 text-center text-xs text-neutral-500">
-          No activity yet. Add or apply to a link and it&apos;ll show up here.
-        </p>
-      ) : (
+      {open && (
+        <div className="border-t border-neutral-200 dark:border-neutral-800">
+          {loading ? (
+            <p className="px-3 py-4 text-xs text-neutral-500">Loading...</p>
+          ) : sessions.length === 0 ? (
+            <p className="px-3 py-6 text-center text-xs text-neutral-500">
+              No activity yet. Add or apply to a link and it&apos;ll show up here.
+            </p>
+          ) : (
         <ul className="max-h-[420px] divide-y divide-neutral-100 overflow-y-auto text-sm dark:divide-neutral-800">
           {sessions.map((s, i) => {
             const cutoff = lastSeen ? new Date(lastSeen).getTime() : 0;
@@ -146,6 +158,8 @@ export function UpdatesCard({ role }: { role: Role }) {
             );
           })}
         </ul>
+      )}
+        </div>
       )}
     </div>
   );
