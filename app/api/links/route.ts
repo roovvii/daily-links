@@ -11,7 +11,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const role = (await getRoleFromRequest(req)) ?? "ravi";
+  const role = await getRoleFromRequest(req);
+  if (!role) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = await req.json().catch(() => ({}));
   const raw = typeof body.text === "string" ? body.text : "";
   const urls = splitUrls(raw);

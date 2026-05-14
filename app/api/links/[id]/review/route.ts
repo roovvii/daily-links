@@ -12,7 +12,8 @@ function parseId(idStr: string): number | null {
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const id = parseId(params.id);
   if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
-  const role = (await getRoleFromRequest(req)) ?? "ravi";
+  const role = await getRoleFromRequest(req);
+  if (!role) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
   const note = typeof body.note === "string" ? body.note.slice(0, 4000) : "";
@@ -36,7 +37,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   const id = parseId(params.id);
   if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
-  const role = (await getRoleFromRequest(req)) ?? "ravi";
+  const role = await getRoleFromRequest(req);
+  if (!role) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const row = await clearReview(id);
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
   await insertEvent(role, "reviewed", id);

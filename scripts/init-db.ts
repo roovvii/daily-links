@@ -23,11 +23,38 @@ async function main() {
       notes TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      completed_at TIMESTAMPTZ
+      completed_at TIMESTAMPTZ,
+      needs_review BOOLEAN NOT NULL DEFAULT FALSE,
+      review_note TEXT,
+      review_images JSONB,
+      review_flagged_at TIMESTAMPTZ,
+      snoozed_until TIMESTAMPTZ
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS links_status_idx ON links (status)`;
   await sql`CREATE INDEX IF NOT EXISTS links_created_at_idx ON links (created_at DESC)`;
+
+  console.log("Creating events table if missing...");
+  await sql`
+    CREATE TABLE IF NOT EXISTS events (
+      id SERIAL PRIMARY KEY,
+      role TEXT NOT NULL,
+      type TEXT NOT NULL,
+      link_id INT REFERENCES links(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS events_role_type_created_idx ON events (role, type, created_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS events_type_created_idx ON events (type, created_at)`;
+  await sql`CREATE INDEX IF NOT EXISTS events_link_id_idx ON events (link_id)`;
+
+  console.log("Creating last_seen table if missing...");
+  await sql`
+    CREATE TABLE IF NOT EXISTS last_seen (
+      role TEXT PRIMARY KEY,
+      seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
   console.log("Done.");
 }
 

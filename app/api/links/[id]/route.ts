@@ -14,7 +14,8 @@ function parseId(idStr: string): number | null {
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const id = parseId(params.id);
   if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
-  const role = (await getRoleFromRequest(req)) ?? "ravi";
+  const role = await getRoleFromRequest(req);
+  if (!role) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
   const patch: {
@@ -41,7 +42,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   const id = parseId(params.id);
   if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
-  const role = (await getRoleFromRequest(req)) ?? "ravi";
+  const role = await getRoleFromRequest(req);
+  if (!role) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   await deleteLink(id);
   await insertEvent(role, "deleted", null);
   return NextResponse.json({ ok: true });
