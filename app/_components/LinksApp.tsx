@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
 import type { LinkRow, LinkStatus } from "@/lib/types";
 import { STATUS_LABEL, STATUS_OPTIONS } from "@/lib/types";
-import { ROLE_LABEL, type Role } from "@/lib/auth";
+import type { Role } from "@/lib/auth";
 
 type Filter = "active" | "review" | "done" | "all";
 
@@ -205,14 +205,12 @@ export function LinksApp({
             {counts.active} active, {counts.review} for review, {counts.done} done, {counts.total} total
           </p>
         </div>
-        <div className="flex items-center gap-3 text-xs text-neutral-500">
-          <span>
-            Signed in as <span className="font-medium text-neutral-700 dark:text-neutral-200">{ROLE_LABEL[role]}</span>
-          </span>
-          <button onClick={signOut} className="underline-offset-2 hover:underline">
-            Sign out
-          </button>
-        </div>
+        <button
+          onClick={signOut}
+          className="text-xs text-neutral-500 underline-offset-2 hover:underline"
+        >
+          Sign out
+        </button>
       </header>
 
       {dbError && (
