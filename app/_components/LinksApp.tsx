@@ -303,14 +303,12 @@ export function LinksApp({
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={"Paste one URL per line:\nhttps://boards.greenhouse.io/acme/jobs/123\nhttps://jobs.lever.co/acme/abc"}
+            placeholder="Each URL on its own line. Duplicates are skipped."
             rows={4}
             className="w-full resize-y rounded-md border border-neutral-300 bg-white px-3 py-2 font-mono text-xs outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-950"
           />
           <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-neutral-500">
-              {addMsg ?? "Each URL on its own line. Duplicates are skipped."}
-            </p>
+            <p className="text-xs text-neutral-500">{addMsg ?? " "}</p>
             <button
               type="submit"
               disabled={adding || !text.trim()}
