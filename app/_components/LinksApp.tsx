@@ -107,13 +107,29 @@ export function LinksApp({
     return { active, done, review, total: links.length };
   }, [links]);
 
+  const [search, setSearch] = useState("");
+
   const visible = useMemo(() => {
-    if (filter === "all") return links;
-    if (filter === "review") return links.filter((l) => l.needs_review);
-    if (filter === "done")
-      return links.filter((l) => !l.needs_review && l.status !== "todo");
-    return links.filter((l) => !l.needs_review && l.status === "todo");
-  }, [links, filter]);
+    let filtered: LinkRow[];
+    if (filter === "all") filtered = links;
+    else if (filter === "review") filtered = links.filter((l) => l.needs_review);
+    else if (filter === "done")
+      filtered = links.filter((l) => !l.needs_review && l.status !== "todo");
+    else filtered = links.filter((l) => !l.needs_review && l.status === "todo");
+
+    const q = search.trim().toLowerCase();
+    if (q) {
+      filtered = filtered.filter(
+        (l) =>
+          (l.company ?? "").toLowerCase().includes(q) ||
+          (l.title ?? "").toLowerCase().includes(q) ||
+          (l.source ?? "").toLowerCase().includes(q) ||
+          (l.notes ?? "").toLowerCase().includes(q) ||
+          l.url.toLowerCase().includes(q)
+      );
+    }
+    return filtered;
+  }, [links, filter, search]);
 
   function onAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -250,6 +266,24 @@ export function LinksApp({
         </form>
       )}
 
+      <div className="mb-3 flex items-center gap-2">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search company, title, URL, notes..."
+          className="w-full rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-950"
+        />
+        {search && (
+          <button
+            onClick={() => setSearch("")}
+            className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
       <div className="mb-3 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
         {(["active", "review", "done", "all"] as const).map((f) => {
           const count =
@@ -375,9 +409,11 @@ function LinkItem({
 }) {
   const [editing, setEditing] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [panelHiddenInReview, setPanelHiddenInReview] = useState(false);
   const [company, setCompany] = useState(link.company ?? "");
   const [title, setTitle] = useState(link.title ?? "");
+  const [notes, setNotes] = useState(link.notes ?? "");
   const checked = link.status !== "todo";
 
   const showPanel = filterIsReview
@@ -389,7 +425,11 @@ function LinkItem({
   }
 
   function saveEdits() {
-    onPatch(link.id, { company: company.trim() || null, title: title.trim() || null });
+    onPatch(link.id, {
+      company: company.trim() || null,
+      title: title.trim() || null,
+      notes: notes.trim() || null,
+    });
     setEditing(false);
   }
 
@@ -430,6 +470,13 @@ function LinkItem({
                 placeholder="Title"
                 className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
               />
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Notes (resume version, follow-up date, etc.)"
+                rows={2}
+                className="w-full resize-y rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              />
               <div className="flex gap-2">
                 <button
                   onClick={saveEdits}
@@ -438,7 +485,12 @@ function LinkItem({
                   Save
                 </button>
                 <button
-                  onClick={() => setEditing(false)}
+                  onClick={() => {
+                    setCompany(link.company ?? "");
+                    setTitle(link.title ?? "");
+                    setNotes(link.notes ?? "");
+                    setEditing(false);
+                  }}
                   className="rounded px-2 py-1 text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
                 >
                   Cancel
@@ -497,6 +549,12 @@ function LinkItem({
                   </>
                 )}
               </div>
+              {link.notes && (
+                <p className="mt-1 whitespace-pre-wrap text-xs text-neutral-600 dark:text-neutral-400">
+                  <span className="mr-1 text-neutral-400">▸</span>
+                  {link.notes}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -554,6 +612,13 @@ function LinkItem({
             </button>
           )}
           <button
+            onClick={() => setHistoryOpen((v) => !v)}
+            className="text-xs text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+            title="Show activity history"
+          >
+            History
+          </button>
+          <button
             onClick={() => setEditing((v) => !v)}
             className="text-xs text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
           >
@@ -586,7 +651,93 @@ function LinkItem({
           }}
         />
       )}
+
+      {historyOpen && (
+        <HistoryPanel linkId={link.id} onClose={() => setHistoryOpen(false)} />
+      )}
     </li>
+  );
+}
+
+type LinkEvent = { role: string; type: string; created_at: string };
+
+const EVENT_DESC: Record<string, string> = {
+  added: "added",
+  applied: "marked applied",
+  rejected: "marked rejected",
+  interview: "moved to interview",
+  offer: "moved to offer",
+  flagged: "flagged for review",
+  reviewed: "marked reviewed",
+};
+
+function HistoryPanel({ linkId, onClose }: { linkId: number; onClose: () => void }) {
+  const [events, setEvents] = useState<LinkEvent[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(`/api/links/${linkId}/events`, { cache: "no-store" });
+        if (!res.ok) {
+          if (!cancelled) setError("Failed to load history");
+          return;
+        }
+        const data = await res.json();
+        if (!cancelled) setEvents((data.events as LinkEvent[]) ?? []);
+      } catch {
+        if (!cancelled) setError("Failed to load history");
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [linkId]);
+
+  return (
+    <div className="mt-3 rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm dark:border-neutral-800 dark:bg-neutral-950/40">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+          Activity
+        </span>
+        <button
+          onClick={onClose}
+          className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
+        >
+          Close
+        </button>
+      </div>
+      {error ? (
+        <p className="text-xs text-rose-600">{error}</p>
+      ) : events === null ? (
+        <p className="text-xs text-neutral-500">Loading...</p>
+      ) : events.length === 0 ? (
+        <p className="text-xs text-neutral-500">No activity recorded yet.</p>
+      ) : (
+        <ol className="space-y-1.5 text-xs">
+          {events.map((e, i) => (
+            <li key={i} className="flex items-baseline gap-2">
+              <span className="font-mono text-neutral-400 tabular-nums" suppressHydrationWarning>
+                {new Date(e.created_at).toLocaleString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
+              </span>
+              <span>
+                <span className="font-medium capitalize">{e.role}</span>{" "}
+                <span className="text-neutral-600 dark:text-neutral-300">
+                  {EVENT_DESC[e.type] ?? e.type}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }
 

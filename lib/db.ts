@@ -185,6 +185,23 @@ export async function getLastSeen(role: string): Promise<string | null> {
   return rows[0]?.seen_at ?? null;
 }
 
+export type LinkEventRow = {
+  role: string;
+  type: string;
+  created_at: string;
+};
+
+export async function listEventsForLink(linkId: number): Promise<LinkEventRow[]> {
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT role, type, created_at::text AS created_at
+    FROM events
+    WHERE link_id = ${linkId}
+    ORDER BY created_at ASC
+  `) as unknown as LinkEventRow[];
+  return rows;
+}
+
 export async function setLastSeen(role: string): Promise<string> {
   const sql = getSql();
   const rows = (await sql`
