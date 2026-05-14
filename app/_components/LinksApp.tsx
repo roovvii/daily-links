@@ -23,6 +23,48 @@ function hostOf(url: string): string {
   }
 }
 
+function sameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function dateGroupLabel(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (sameDay(d, now)) return "Today";
+  if (sameDay(d, yesterday)) return "Yesterday";
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function groupByDate(rows: LinkRow[]): { label: string; items: LinkRow[] }[] {
+  const groups: { label: string; items: LinkRow[] }[] = [];
+  for (const row of rows) {
+    const label = dateGroupLabel(row.created_at);
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.items.push(row);
+    else groups.push({ label, items: [row] });
+  }
+  return groups;
+}
+
 export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: string | null }) {
   const router = useRouter();
   const [links, setLinks] = useState<LinkRow[]>(initial);
@@ -169,11 +211,23 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
           {filter === "active" ? "No active links. Paste some above." : "Nothing here yet."}
         </p>
       ) : (
-        <ul className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white dark:divide-neutral-800 dark:border-neutral-800 dark:bg-neutral-900">
-          {visible.map((l) => (
-            <LinkItem key={l.id} link={l} onPatch={patchLink} onDelete={removeLink} />
+        <div className="space-y-4">
+          {groupByDate(visible).map((group) => (
+            <section key={group.label}>
+              <h2 className="mb-1.5 px-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                {group.label}
+                <span className="ml-2 font-normal normal-case tracking-normal text-neutral-400">
+                  {group.items.length} link{group.items.length === 1 ? "" : "s"}
+                </span>
+              </h2>
+              <ul className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white dark:divide-neutral-800 dark:border-neutral-800 dark:bg-neutral-900">
+                {group.items.map((l) => (
+                  <LinkItem key={l.id} link={l} onPatch={patchLink} onDelete={removeLink} />
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
       )}
     </main>
   );
@@ -272,7 +326,7 @@ function LinkItem({
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
               {link.source && <span>{link.source}</span>}
-              <span>·</span>
+              {link.source && <span>·</span>}
               <a
                 href={link.url}
                 target="_blank"
@@ -282,6 +336,10 @@ function LinkItem({
               >
                 {hostOf(link.url)}
               </a>
+              <span>·</span>
+              <time dateTime={link.created_at} title={new Date(link.created_at).toLocaleString()}>
+                {formatTime(link.created_at)}
+              </time>
             </div>
           </div>
         )}
