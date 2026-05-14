@@ -1,9 +1,31 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Suspense, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export default function LoginPage() {
+  return (
+    <main className="flex min-h-screen items-center justify-center px-4">
+      <Suspense fallback={<LoginShell />}>
+        <LoginForm />
+      </Suspense>
+    </main>
+  );
+}
+
+function LoginShell({ children }: { children?: React.ReactNode }) {
+  return (
+    <div className="w-full max-w-sm space-y-4 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+      <div>
+        <h1 className="text-lg font-semibold">Daily Links</h1>
+        <p className="text-sm text-neutral-500">Enter the shared password to continue.</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") || "/";
@@ -31,15 +53,8 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-sm space-y-4 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
-      >
-        <div>
-          <h1 className="text-lg font-semibold">Daily Links</h1>
-          <p className="text-sm text-neutral-500">Enter the shared password to continue.</p>
-        </div>
+    <LoginShell>
+      <form onSubmit={onSubmit} className="space-y-4">
         <input
           type="password"
           autoFocus
@@ -58,6 +73,6 @@ export default function LoginPage() {
           {pending ? "Signing in..." : "Sign in"}
         </button>
       </form>
-    </main>
+    </LoginShell>
   );
 }
