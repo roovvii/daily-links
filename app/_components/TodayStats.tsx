@@ -4,13 +4,6 @@ import { useEffect, useState } from "react";
 
 type Counts = { ravi: number; sreeya: number };
 
-function todayLocalRange(): { from: string; to: string } {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
-  return { from: start.toISOString(), to: end.toISOString() };
-}
-
 export function TodayStats({ version = 0 }: { version?: number }) {
   const [counts, setCounts] = useState<Counts | null>(null);
 
@@ -18,11 +11,7 @@ export function TodayStats({ version = 0 }: { version?: number }) {
     let cancelled = false;
     async function load() {
       try {
-        const { from, to } = todayLocalRange();
-        const res = await fetch(
-          `/api/stats/today?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
-          { cache: "no-store" }
-        );
+        const res = await fetch("/api/stats/today", { cache: "no-store" });
         if (!res.ok) return;
         const json = await res.json();
         const c = (json.counts as Counts) ?? { ravi: 0, sreeya: 0 };
