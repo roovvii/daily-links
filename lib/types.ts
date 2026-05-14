@@ -18,6 +18,7 @@ export type EventType =
   | "offer"
   | "flagged"
   | "reviewed"
+  | "snoozed"
   | "deleted";
 
 export type EventSession = {
@@ -43,4 +44,5 @@ export type LinkRow = {
   review_note: string | null;
   review_images: string[] | null;
   review_flagged_at: string | null;
+  snoozed_until: string | null;
 };

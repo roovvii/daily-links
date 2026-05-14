@@ -8,6 +8,7 @@ import { STATUS_LABEL, STATUS_OPTIONS } from "@/lib/types";
 import type { Role } from "@/lib/auth";
 import { ClockCard } from "./ClockStrip";
 import { UpdatesCard } from "./UpdatesPanel";
+import { TrendChart } from "./TrendChart";
 
 type Filter = "active" | "review" | "done" | "all";
 
@@ -95,17 +96,28 @@ export function LinksApp({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  function isSnoozed(l: LinkRow): boolean {
+    return !!l.snoozed_until && new Date(l.snoozed_until).getTime() > now;
+  }
+
   const counts = useMemo(() => {
     let active = 0;
     let done = 0;
     let review = 0;
     for (const l of links) {
       if (l.needs_review) review++;
-      else if (l.status === "todo") active++;
-      else done++;
+      else if (l.status === "todo" && !isSnoozed(l)) active++;
+      else if (l.status !== "todo") done++;
     }
     return { active, done, review, total: links.length };
-  }, [links]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [links, now]);
 
   const [search, setSearch] = useState("");
 
@@ -115,7 +127,10 @@ export function LinksApp({
     else if (filter === "review") filtered = links.filter((l) => l.needs_review);
     else if (filter === "done")
       filtered = links.filter((l) => !l.needs_review && l.status !== "todo");
-    else filtered = links.filter((l) => !l.needs_review && l.status === "todo");
+    else
+      filtered = links.filter(
+        (l) => !l.needs_review && l.status === "todo" && !isSnoozed(l)
+      );
 
     const q = search.trim().toLowerCase();
     if (q) {
@@ -208,6 +223,24 @@ export function LinksApp({
     setLinks((prev) => prev.filter((l) => l.id !== id));
   }
 
+  async function snoozeLink(id: number, untilIso: string) {
+    const res = await fetch(`/api/links/${id}/snooze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ until: untilIso }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    replaceLink(data.link as LinkRow);
+  }
+
+  async function unsnoozeLink(id: number) {
+    const res = await fetch(`/api/links/${id}/snooze`, { method: "DELETE" });
+    if (!res.ok) return;
+    const data = await res.json();
+    replaceLink(data.link as LinkRow);
+  }
+
   async function signOut() {
     await fetch("/api/auth", { method: "DELETE" });
     router.replace("/login");
@@ -218,12 +251,20 @@ export function LinksApp({
     <div className="mx-auto max-w-7xl px-4 py-6 lg:px-6">
       <header className="mb-6 flex items-start justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Daily Links</h1>
-        <button
-          onClick={signOut}
-          className="text-xs text-neutral-500 underline-offset-2 hover:underline"
-        >
-          Sign out
-        </button>
+        <div className="flex items-center gap-3 text-xs text-neutral-500">
+          {isAdmin && (
+            <a
+              href="/api/export/csv"
+              className="underline-offset-2 hover:underline"
+              title="Download a CSV of all links"
+            >
+              Export CSV
+            </a>
+          )}
+          <button onClick={signOut} className="underline-offset-2 hover:underline">
+            Sign out
+          </button>
+        </div>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -320,6 +361,8 @@ export function LinksApp({
                       onSaveReview={saveReview}
                       onClearReview={clearReview}
                       onClearReviewAndApply={clearReviewAndApply}
+                      onSnooze={snoozeLink}
+                      onUnsnooze={unsnoozeLink}
                     />
                   ))}
                 </ul>
@@ -351,6 +394,7 @@ export function LinksApp({
           </div>
           <ClockCard />
           <UpdatesCard role={role} />
+          <TrendChart />
         </aside>
       </div>
     </div>
@@ -396,6 +440,8 @@ function LinkItem({
   onSaveReview,
   onClearReview,
   onClearReviewAndApply,
+  onSnooze,
+  onUnsnooze,
 }: {
   link: LinkRow;
   mounted: boolean;
@@ -406,15 +452,20 @@ function LinkItem({
   onSaveReview: (id: number, note: string, images: string[]) => Promise<boolean>;
   onClearReview: (id: number) => void;
   onClearReviewAndApply: (id: number) => void;
+  onSnooze: (id: number, untilIso: string) => void;
+  onUnsnooze: (id: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [panelHiddenInReview, setPanelHiddenInReview] = useState(false);
   const [company, setCompany] = useState(link.company ?? "");
   const [title, setTitle] = useState(link.title ?? "");
   const [notes, setNotes] = useState(link.notes ?? "");
   const checked = link.status !== "todo";
+  const snoozed =
+    !!link.snoozed_until && new Date(link.snoozed_until).getTime() > Date.now();
 
   const showPanel = filterIsReview
     ? link.needs_review && !panelHiddenInReview
@@ -548,6 +599,21 @@ function LinkItem({
                     </time>
                   </>
                 )}
+                {snoozed && mounted && link.snoozed_until && (
+                  <>
+                    <span>·</span>
+                    <span
+                      className="text-indigo-600 dark:text-indigo-400"
+                      title={`Snoozed until ${new Date(link.snoozed_until).toLocaleString()}`}
+                    >
+                      snoozed until{" "}
+                      {new Date(link.snoozed_until).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </span>
+                  </>
+                )}
               </div>
               {link.notes && (
                 <p className="mt-1 whitespace-pre-wrap text-xs text-neutral-600 dark:text-neutral-400">
@@ -612,6 +678,17 @@ function LinkItem({
             </button>
           )}
           <button
+            onClick={() => setSnoozeOpen((v) => !v)}
+            className={`text-xs ${
+              snoozed
+                ? "text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-200"
+                : "text-neutral-400 hover:text-indigo-700"
+            }`}
+            title={snoozed ? "Manage snooze" : "Snooze this link"}
+          >
+            {snoozed ? "Snoozed" : "Snooze"}
+          </button>
+          <button
             onClick={() => setHistoryOpen((v) => !v)}
             className="text-xs text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
             title="Show activity history"
@@ -655,7 +732,113 @@ function LinkItem({
       {historyOpen && (
         <HistoryPanel linkId={link.id} onClose={() => setHistoryOpen(false)} />
       )}
+
+      {snoozeOpen && (
+        <SnoozePanel
+          link={link}
+          onSnooze={(iso) => {
+            onSnooze(link.id, iso);
+            setSnoozeOpen(false);
+          }}
+          onUnsnooze={() => {
+            onUnsnooze(link.id);
+            setSnoozeOpen(false);
+          }}
+          onClose={() => setSnoozeOpen(false)}
+        />
+      )}
     </li>
+  );
+}
+
+function SnoozePanel({
+  link,
+  onSnooze,
+  onUnsnooze,
+  onClose,
+}: {
+  link: LinkRow;
+  onSnooze: (iso: string) => void;
+  onUnsnooze: () => void;
+  onClose: () => void;
+}) {
+  const snoozed =
+    !!link.snoozed_until && new Date(link.snoozed_until).getTime() > Date.now();
+  const [custom, setCustom] = useState("");
+
+  function daysFromNow(days: number): string {
+    const d = new Date();
+    d.setHours(9, 0, 0, 0);
+    d.setDate(d.getDate() + days);
+    return d.toISOString();
+  }
+
+  const quick = [
+    { label: "Tomorrow", iso: () => daysFromNow(1) },
+    { label: "In 3 days", iso: () => daysFromNow(3) },
+    { label: "In 1 week", iso: () => daysFromNow(7) },
+    { label: "In 2 weeks", iso: () => daysFromNow(14) },
+  ];
+
+  function applyCustom() {
+    if (!custom) return;
+    const d = new Date(custom + "T09:00:00");
+    if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) return;
+    onSnooze(d.toISOString());
+  }
+
+  return (
+    <div className="mt-3 rounded-md border border-indigo-200 bg-indigo-50 p-3 text-sm dark:border-indigo-900/60 dark:bg-indigo-950/30">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-medium uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
+          Snooze
+        </span>
+        <button
+          onClick={onClose}
+          className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
+        >
+          Close
+        </button>
+      </div>
+      {snoozed && link.snoozed_until && (
+        <p className="mb-2 text-xs text-indigo-700 dark:text-indigo-300">
+          Currently snoozed until {new Date(link.snoozed_until).toLocaleString()}.
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {quick.map((q) => (
+          <button
+            key={q.label}
+            onClick={() => onSnooze(q.iso())}
+            className="rounded bg-white px-2 py-1 text-xs text-neutral-900 hover:bg-neutral-100 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+          >
+            {q.label}
+          </button>
+        ))}
+        <span className="text-xs text-neutral-500">or</span>
+        <input
+          type="date"
+          value={custom}
+          onChange={(e) => setCustom(e.target.value)}
+          className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-950"
+        />
+        <button
+          onClick={applyCustom}
+          disabled={!custom}
+          className="rounded bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+        >
+          Snooze
+        </button>
+        {snoozed && (
+          <button
+            onClick={onUnsnooze}
+            className="ml-auto rounded border border-emerald-600 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+          >
+            Unsnooze
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

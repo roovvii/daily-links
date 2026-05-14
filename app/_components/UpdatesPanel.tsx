@@ -12,6 +12,7 @@ const EVENT_VERB: Record<EventType, (count: number) => string> = {
   offer: (n) => `got an offer on ${n} link${n === 1 ? "" : "s"}`,
   flagged: (n) => `flagged ${n} for review`,
   reviewed: (n) => `reviewed ${n} link${n === 1 ? "" : "s"}`,
+  snoozed: (n) => `snoozed ${n} link${n === 1 ? "" : "s"}`,
   deleted: (n) => `deleted ${n} link${n === 1 ? "" : "s"}`,
 };
 

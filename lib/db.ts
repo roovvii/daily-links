@@ -12,7 +12,8 @@ export async function listLinks(): Promise<LinkRow[]> {
   const rows = (await sql`
     SELECT id, url, company, title, source, status, notes,
            created_at, updated_at, completed_at,
-           needs_review, review_note, review_images, review_flagged_at
+           needs_review, review_note, review_images, review_flagged_at,
+           snoozed_until
     FROM links
     ORDER BY
       CASE status WHEN 'todo' THEN 0 ELSE 1 END,
@@ -34,7 +35,8 @@ export async function createLink(input: {
     ON CONFLICT (url) DO NOTHING
     RETURNING id, url, company, title, source, status, notes,
               created_at, updated_at, completed_at,
-              needs_review, review_note, review_images, review_flagged_at
+              needs_review, review_note, review_images, review_flagged_at,
+              snoozed_until
   `) as unknown as LinkRow[];
   return rows[0] ?? null;
 }
@@ -62,7 +64,8 @@ export async function updateLink(
     WHERE id = ${id}
     RETURNING id, url, company, title, source, status, notes,
               created_at, updated_at, completed_at,
-              needs_review, review_note, review_images, review_flagged_at
+              needs_review, review_note, review_images, review_flagged_at,
+              snoozed_until
   `) as unknown as LinkRow[];
   return rows[0] ?? null;
 }
@@ -84,7 +87,8 @@ export async function setReview(
     WHERE id = ${id}
     RETURNING id, url, company, title, source, status, notes,
               created_at, updated_at, completed_at,
-              needs_review, review_note, review_images, review_flagged_at
+              needs_review, review_note, review_images, review_flagged_at,
+              snoozed_until
   `) as unknown as LinkRow[];
   return rows[0] ?? null;
 }
@@ -102,7 +106,8 @@ export async function clearReview(id: number): Promise<LinkRow | null> {
     WHERE id = ${id}
     RETURNING id, url, company, title, source, status, notes,
               created_at, updated_at, completed_at,
-              needs_review, review_note, review_images, review_flagged_at
+              needs_review, review_note, review_images, review_flagged_at,
+              snoozed_until
   `) as unknown as LinkRow[];
   return rows[0] ?? null;
 }
@@ -110,6 +115,54 @@ export async function clearReview(id: number): Promise<LinkRow | null> {
 export async function deleteLink(id: number): Promise<void> {
   const sql = getSql();
   await sql`DELETE FROM links WHERE id = ${id}`;
+}
+
+export async function setSnooze(
+  id: number,
+  until: string
+): Promise<LinkRow | null> {
+  const sql = getSql();
+  const rows = (await sql`
+    UPDATE links
+    SET snoozed_until = ${until}::timestamptz, updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING id, url, company, title, source, status, notes,
+              created_at, updated_at, completed_at,
+              needs_review, review_note, review_images, review_flagged_at,
+              snoozed_until
+  `) as unknown as LinkRow[];
+  return rows[0] ?? null;
+}
+
+export async function clearSnooze(id: number): Promise<LinkRow | null> {
+  const sql = getSql();
+  const rows = (await sql`
+    UPDATE links
+    SET snoozed_until = NULL, updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING id, url, company, title, source, status, notes,
+              created_at, updated_at, completed_at,
+              needs_review, review_note, review_images, review_flagged_at,
+              snoozed_until
+  `) as unknown as LinkRow[];
+  return rows[0] ?? null;
+}
+
+export type DailyApplyRow = { role: string; day: string; count: number };
+
+export async function listDailyApplies(days = 14): Promise<DailyApplyRow[]> {
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT role,
+           to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+           COUNT(*)::int AS count
+    FROM events
+    WHERE type = 'applied'
+      AND created_at >= NOW() - (${days} || ' days')::interval
+    GROUP BY role, day
+    ORDER BY day ASC, role ASC
+  `) as unknown as DailyApplyRow[];
+  return rows;
 }
 
 export async function insertEvent(
