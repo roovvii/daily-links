@@ -242,6 +242,7 @@ export function LinksApp({
     if (!res.ok) return;
     const data = await res.json();
     replaceLink(data.link as LinkRow);
+    bumpStats();
   }
 
   async function signOut() {
@@ -841,6 +842,9 @@ const EVENT_DESC: Record<string, string> = {
   applied: "marked applied",
   flagged: "flagged for review",
   reviewed: "marked reviewed",
+  snoozed: "snoozed",
+  unsnoozed: "unsnoozed",
+  deleted: "deleted",
 };
 
 function HistoryPanel({ linkId, onClose }: { linkId: number; onClose: () => void }) {

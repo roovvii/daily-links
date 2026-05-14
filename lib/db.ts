@@ -70,6 +70,14 @@ export async function updateLink(
   return rows[0] ?? null;
 }
 
+export async function getLinkReviewState(id: number): Promise<boolean | null> {
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT needs_review FROM links WHERE id = ${id}
+  `) as unknown as { needs_review: boolean }[];
+  return rows[0] ? rows[0].needs_review : null;
+}
+
 export async function setReview(
   id: number,
   note: string,
@@ -154,10 +162,13 @@ export type TodayCount = { role: string; count: number };
 
 export async function getTodayApplyCounts(): Promise<TodayCount[]> {
   const sql = getSql();
+  // COUNT(DISTINCT link_id) so toggling the same link off and on again
+  // (which inserts a second 'applied' event) doesn't double-count.
   const rows = (await sql`
-    SELECT role, COUNT(*)::int AS count
+    SELECT role, COUNT(DISTINCT link_id)::int AS count
     FROM events
     WHERE type = 'applied'
+      AND link_id IS NOT NULL
       AND (
         (role = 'ravi'
           AND (created_at AT TIME ZONE 'America/Chicago')::date
@@ -177,6 +188,7 @@ export async function listDailyApplies(days = 14): Promise<DailyApplyRow[]> {
   // Bucket each role's events by that role's own local calendar date so the
   // chart agrees with the per-role 'Applied today' tile. The WHERE filter is
   // still UTC-based and intentionally loose (it just bounds the scan).
+  // COUNT(DISTINCT link_id) so re-toggling the same link doesn't double-count.
   const rows = (await sql`
     SELECT role,
            to_char(
@@ -192,9 +204,10 @@ export async function listDailyApplies(days = 14): Promise<DailyApplyRow[]> {
              ),
              'YYYY-MM-DD'
            ) AS day,
-           COUNT(*)::int AS count
+           COUNT(DISTINCT link_id)::int AS count
     FROM events
     WHERE type = 'applied'
+      AND link_id IS NOT NULL
       AND created_at >= NOW() - ((${days} + 1) || ' days')::interval
     GROUP BY role, day
     ORDER BY day ASC, role ASC

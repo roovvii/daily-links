@@ -32,7 +32,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   const id = parseId(params.id);
   if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+  const role = await getRoleFromRequest(req);
+  if (!role) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const row = await clearSnooze(id);
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
+  await insertEvent(role, "unsnoozed", id);
   return NextResponse.json({ link: row });
 }

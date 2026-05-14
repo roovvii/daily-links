@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { clearReview, insertEvent, setReview } from "@/lib/db";
+import { clearReview, getLinkReviewState, insertEvent, setReview } from "@/lib/db";
 import { getRoleFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -25,7 +25,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: "note or image required" }, { status: 400 });
   }
 
-  const wasFlagged = false; // We always treat this as a fresh flag for event purposes
+  // Only emit a 'flagged' event the first time a link is flagged. Subsequent
+  // edits to the note or images are silent so the activity feed doesn't
+  // accumulate a 'flagged' entry per keystroke-save.
+  const wasFlagged = (await getLinkReviewState(id)) === true;
   const row = await setReview(id, note, images);
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
   if (!wasFlagged) {

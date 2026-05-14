@@ -10,6 +10,7 @@ const EVENT_VERB: Record<EventType, (count: number) => string> = {
   flagged: (n) => `flagged ${n} for review`,
   reviewed: (n) => `reviewed ${n} link${n === 1 ? "" : "s"}`,
   snoozed: (n) => `snoozed ${n} link${n === 1 ? "" : "s"}`,
+  unsnoozed: (n) => `unsnoozed ${n} link${n === 1 ? "" : "s"}`,
   deleted: (n) => `deleted ${n} link${n === 1 ? "" : "s"}`,
 };
 
