@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
 import type { LinkRow, LinkStatus } from "@/lib/types";
 import { STATUS_LABEL, STATUS_OPTIONS } from "@/lib/types";
+import { ROLE_LABEL, type Role } from "@/lib/auth";
 
 type Filter = "active" | "review" | "done" | "all";
 
@@ -73,7 +74,16 @@ function groupByDate(rows: LinkRow[]): { label: string; items: LinkRow[] }[] {
   return groups;
 }
 
-export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: string | null }) {
+export function LinksApp({
+  initial,
+  dbError,
+  role,
+}: {
+  initial: LinkRow[];
+  dbError: string | null;
+  role: Role;
+}) {
+  const isAdmin = role === "ravi";
   const router = useRouter();
   const [links, setLinks] = useState<LinkRow[]>(initial);
   const [filter, setFilter] = useState<Filter>("active");
@@ -195,12 +205,14 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
             {counts.active} active, {counts.review} for review, {counts.done} done, {counts.total} total
           </p>
         </div>
-        <button
-          onClick={signOut}
-          className="text-xs text-neutral-500 underline-offset-2 hover:underline"
-        >
-          Sign out
-        </button>
+        <div className="flex items-center gap-3 text-xs text-neutral-500">
+          <span>
+            Signed in as <span className="font-medium text-neutral-700 dark:text-neutral-200">{ROLE_LABEL[role]}</span>
+          </span>
+          <button onClick={signOut} className="underline-offset-2 hover:underline">
+            Sign out
+          </button>
+        </div>
       </header>
 
       {dbError && (
@@ -209,28 +221,30 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
         </div>
       )}
 
-      <form onSubmit={onAdd} className="mb-6 space-y-2">
-        <label className="block text-sm font-medium">Add links</label>
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={"Paste one URL per line:\nhttps://boards.greenhouse.io/acme/jobs/123\nhttps://jobs.lever.co/acme/abc"}
-          rows={4}
-          className="w-full resize-y rounded-md border border-neutral-300 bg-white px-3 py-2 font-mono text-xs outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-950"
-        />
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-neutral-500">
-            {addMsg ?? "Each URL on its own line. Duplicates are skipped."}
-          </p>
-          <button
-            type="submit"
-            disabled={adding || !text.trim()}
-            className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-60 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
-          >
-            {adding ? "Adding..." : "Add"}
-          </button>
-        </div>
-      </form>
+      {isAdmin && (
+        <form onSubmit={onAdd} className="mb-6 space-y-2">
+          <label className="block text-sm font-medium">Add links</label>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={"Paste one URL per line:\nhttps://boards.greenhouse.io/acme/jobs/123\nhttps://jobs.lever.co/acme/abc"}
+            rows={4}
+            className="w-full resize-y rounded-md border border-neutral-300 bg-white px-3 py-2 font-mono text-xs outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-950"
+          />
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-neutral-500">
+              {addMsg ?? "Each URL on its own line. Duplicates are skipped."}
+            </p>
+            <button
+              type="submit"
+              disabled={adding || !text.trim()}
+              className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-60 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
+            >
+              {adding ? "Adding..." : "Add"}
+            </button>
+          </div>
+        </form>
+      )}
 
       <div className="mb-3 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
         {(["active", "review", "done", "all"] as const).map((f) => {
@@ -280,6 +294,7 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
                       link={l}
                       mounted={mounted}
                       filterIsReview={filter === "review"}
+                      isAdmin={isAdmin}
                       onPatch={patchLink}
                       onDelete={removeLink}
                       onSaveReview={saveReview}
@@ -301,6 +316,7 @@ function LinkItem({
   link,
   mounted,
   filterIsReview,
+  isAdmin,
   onPatch,
   onDelete,
   onSaveReview,
@@ -310,6 +326,7 @@ function LinkItem({
   link: LinkRow;
   mounted: boolean;
   filterIsReview: boolean;
+  isAdmin: boolean;
   onPatch: (id: number, body: Partial<LinkRow>) => void;
   onDelete: (id: number) => void;
   onSaveReview: (id: number, note: string, images: string[]) => Promise<boolean>;
@@ -457,22 +474,32 @@ function LinkItem({
             ))}
           </select>
           {filterIsReview && link.needs_review ? (
-            <>
+            isAdmin ? (
+              <>
+                <button
+                  onClick={() => onClearReview(link.id)}
+                  className="rounded border border-emerald-600 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                  title="Clear the review flag (keeps current status)"
+                >
+                  Mark reviewed
+                </button>
+                <button
+                  onClick={() => onClearReviewAndApply(link.id)}
+                  className="rounded bg-emerald-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-emerald-700"
+                  title="Clear flag and set status to Applied"
+                >
+                  Reviewed &amp; applied
+                </button>
+              </>
+            ) : (
               <button
-                onClick={() => onClearReview(link.id)}
-                className="rounded border border-emerald-600 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                title="Clear the review flag (keeps current status)"
+                onClick={() => setReviewOpen((v) => !v)}
+                className="text-xs text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200"
+                title="Edit the review request"
               >
-                Mark reviewed
+                Edit review
               </button>
-              <button
-                onClick={() => onClearReviewAndApply(link.id)}
-                className="rounded bg-emerald-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-emerald-700"
-                title="Clear flag and set status to Applied"
-              >
-                Reviewed &amp; applied
-              </button>
-            </>
+            )
           ) : (
             <button
               onClick={() => setReviewOpen((v) => !v)}
@@ -492,18 +519,21 @@ function LinkItem({
           >
             Edit
           </button>
-          <button
-            onClick={() => onDelete(link.id)}
-            className="text-xs text-neutral-400 hover:text-rose-600"
-          >
-            Delete
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => onDelete(link.id)}
+              className="text-xs text-neutral-400 hover:text-rose-600"
+            >
+              Delete
+            </button>
+          )}
         </div>
       </div>
 
       {showPanel && (
         <ReviewPanel
           link={link}
+          isAdmin={isAdmin}
           onSave={onSaveReview}
           onClear={() => {
             onClearReview(link.id);
@@ -522,11 +552,13 @@ function LinkItem({
 
 function ReviewPanel({
   link,
+  isAdmin,
   onSave,
   onClear,
   onClose,
 }: {
   link: LinkRow;
+  isAdmin: boolean;
   onSave: (id: number, note: string, images: string[]) => Promise<boolean>;
   onClear: () => void;
   onClose: () => void;
@@ -683,7 +715,7 @@ function ReviewPanel({
         >
           {saving ? "Saving..." : link.needs_review ? "Update review" : "Flag for review"}
         </button>
-        {link.needs_review && (
+        {link.needs_review && isAdmin && (
           <button
             onClick={onClear}
             className="rounded-md border border-emerald-600 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"

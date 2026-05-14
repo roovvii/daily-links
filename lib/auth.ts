@@ -1,5 +1,11 @@
 export const AUTH_COOKIE = "dl_auth";
-const TOKEN_PAYLOAD = "authenticated";
+
+export type Role = "ravi" | "sreeya";
+export const ROLES: Role[] = ["ravi", "sreeya"];
+export const ROLE_LABEL: Record<Role, string> = {
+  ravi: "Ravi",
+  sreeya: "Sreeya",
+};
 
 function getSecret(): string {
   const secret = process.env.AUTH_SECRET;
@@ -7,10 +13,14 @@ function getSecret(): string {
   return secret;
 }
 
-export function getAppPassword(): string {
-  const pw = process.env.APP_PASSWORD;
-  if (!pw) throw new Error("APP_PASSWORD is not set");
-  return pw;
+export function getRolePassword(role: Role): string | null {
+  const envKey = role === "ravi" ? "APP_PASSWORD" : "SREEYA_PASSWORD";
+  const value = process.env[envKey];
+  return value && value.length > 0 ? value : null;
+}
+
+function tokenPayload(role: Role): string {
+  return `role:${role}`;
 }
 
 async function hmacHex(secret: string, payload: string): Promise<string> {
@@ -37,19 +47,27 @@ function constantTimeEqual(a: string, b: string): boolean {
   return result === 0;
 }
 
-export async function issueAuthToken(): Promise<string> {
-  const sig = await hmacHex(getSecret(), TOKEN_PAYLOAD);
-  return `${TOKEN_PAYLOAD}.${sig}`;
+export async function issueAuthToken(role: Role): Promise<string> {
+  const payload = tokenPayload(role);
+  const sig = await hmacHex(getSecret(), payload);
+  return `${payload}.${sig}`;
 }
 
-export async function verifyAuthToken(token: string | undefined | null): Promise<boolean> {
-  if (!token) return false;
-  const [payload, sig] = token.split(".");
-  if (payload !== TOKEN_PAYLOAD || !sig) return false;
-  const expected = await hmacHex(getSecret(), TOKEN_PAYLOAD);
-  return constantTimeEqual(sig, expected);
+export async function verifyAuthToken(token: string | undefined | null): Promise<Role | null> {
+  if (!token) return null;
+  const dot = token.lastIndexOf(".");
+  if (dot <= 0) return null;
+  const payload = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const m = payload.match(/^role:(ravi|sreeya)$/);
+  if (!m) return null;
+  const role = m[1] as Role;
+  const expected = await hmacHex(getSecret(), payload);
+  return constantTimeEqual(sig, expected) ? role : null;
 }
 
-export function passwordMatches(input: string): boolean {
-  return constantTimeEqual(input, getAppPassword());
+export function passwordMatches(role: Role, input: string): boolean {
+  const expected = getRolePassword(role);
+  if (!expected) return false;
+  return constantTimeEqual(input, expected);
 }

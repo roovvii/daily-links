@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ROLES, ROLE_LABEL, type Role } from "@/lib/auth";
 
 export default function LoginPage() {
   return (
@@ -18,7 +19,7 @@ function LoginShell({ children }: { children?: React.ReactNode }) {
     <div className="w-full max-w-sm space-y-4 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <div>
         <h1 className="text-lg font-semibold">Daily Links</h1>
-        <p className="text-sm text-neutral-500">Enter the shared password to continue.</p>
+        <p className="text-sm text-neutral-500">Choose who you are and enter your password.</p>
       </div>
       {children}
     </div>
@@ -29,6 +30,7 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") || "/";
+  const [role, setRole] = useState<Role>("ravi");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -40,7 +42,7 @@ function LoginForm() {
       const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ role, password }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -55,22 +57,54 @@ function LoginForm() {
   return (
     <LoginShell>
       <form onSubmit={onSubmit} className="space-y-4">
-        <input
-          type="password"
-          autoFocus
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-950"
-        />
+        <div>
+          <label className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300">
+            I am
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {ROLES.map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => {
+                  setRole(r);
+                  setError(null);
+                }}
+                className={`rounded-md border px-3 py-2 text-sm font-medium transition ${
+                  role === r
+                    ? "border-neutral-900 bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900"
+                    : "border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200"
+                }`}
+              >
+                {ROLE_LABEL[r]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300">
+            Password
+          </label>
+          <input
+            type="password"
+            autoFocus
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder={`${ROLE_LABEL[role]}'s password`}
+            className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-950"
+          />
+        </div>
+
         {error && <p className="text-sm text-red-600">{error}</p>}
+
         <button
           type="submit"
           disabled={pending}
           className="w-full rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-60 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
         >
-          {pending ? "Signing in..." : "Sign in"}
+          {pending ? "Signing in..." : `Sign in as ${ROLE_LABEL[role]}`}
         </button>
       </form>
     </LoginShell>
