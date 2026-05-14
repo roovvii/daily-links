@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { upload } from "@vercel/blob/client";
 import type { LinkRow, LinkStatus } from "@/lib/types";
 import { STATUS_LABEL, STATUS_OPTIONS } from "@/lib/types";
 
@@ -507,18 +508,17 @@ function ReviewPanel({
     setUploading((n) => n + valid.length);
     const urls: string[] = [];
     for (const file of valid) {
-      const form = new FormData();
-      form.append("file", file);
       try {
-        const res = await fetch("/api/upload", { method: "POST", body: form });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setError(data.error ?? "Upload failed");
-        } else if (typeof data.url === "string") {
-          urls.push(data.url);
-        }
-      } catch {
-        setError("Upload failed");
+        const ext = file.type.split("/")[1] || "bin";
+        const name = `reviews/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const blob = await upload(name, file, {
+          access: "public",
+          handleUploadUrl: "/api/upload",
+          contentType: file.type,
+        });
+        urls.push(blob.url);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Upload failed");
       } finally {
         setUploading((n) => n - 1);
       }
