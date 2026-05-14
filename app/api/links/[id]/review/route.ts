@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { clearReview, getLinkReviewState, insertEvent, setReview } from "@/lib/db";
+import {
+  clearReview,
+  clearReviewAndApply,
+  getLinkReviewState,
+  insertEvent,
+  setReview,
+} from "@/lib/db";
 import { getRoleFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -42,8 +48,16 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
   if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
   const role = await getRoleFromRequest(req);
   if (!role) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const row = await clearReview(id);
+
+  // `?apply=1` clears the review flag and sets status to applied in one
+  // UPDATE. Used by the "Reviewed & applied" admin button to avoid two
+  // round-trips.
+  const url = new URL(req.url);
+  const apply = url.searchParams.get("apply") === "1";
+
+  const row = apply ? await clearReviewAndApply(id) : await clearReview(id);
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
   await insertEvent(role, "reviewed", id);
+  if (apply) await insertEvent(role, "applied", id);
   return NextResponse.json({ link: row });
 }

@@ -21,7 +21,6 @@ const PRESET_LABEL: Record<RangePreset, string> = {
 };
 
 function daysForPreset(preset: RangePreset): number {
-  const now = new Date();
   switch (preset) {
     case "7d":
       return 7;
@@ -31,13 +30,18 @@ function daysForPreset(preset: RangePreset): number {
       return 30;
     case "90d":
       return 90;
-    case "week": {
-      // Monday-start week. Sunday = 0, so map to 7.
-      const day = now.getDay() === 0 ? 7 : now.getDay();
-      return day;
+    case "week":
+    case "month": {
+      // Use the same "today" reference as the chart's X-axis (Kolkata's
+      // current date) so the range stays consistent across the two roles.
+      const today = latestRoleToday();
+      const [y, m, d] = today.split("-").map(Number);
+      if (preset === "month") return d;
+      // Monday-start week. Build a Date from the local components so getDay
+      // reflects the calendar day in question.
+      const dow = new Date(y, m - 1, d).getDay();
+      return dow === 0 ? 7 : dow;
     }
-    case "month":
-      return now.getDate();
   }
 }
 

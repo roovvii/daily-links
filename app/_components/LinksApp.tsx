@@ -213,8 +213,11 @@ export function LinksApp({
   }
 
   async function clearReviewAndApply(id: number) {
-    await clearReview(id);
-    await patchLink(id, { status: "applied" });
+    const res = await fetch(`/api/links/${id}/review?apply=1`, { method: "DELETE" });
+    if (!res.ok) return;
+    const data = await res.json();
+    replaceLink(data.link as LinkRow);
+    bumpStats();
   }
 
   async function removeLink(id: number) {

@@ -33,10 +33,7 @@ export async function createLink(input: {
     INSERT INTO links (url, company, title, source, status)
     VALUES (${input.url}, ${input.company}, ${input.title}, ${input.source}, 'todo')
     ON CONFLICT (url) DO NOTHING
-    RETURNING id, url, company, title, source, status, notes,
-              created_at, updated_at, completed_at,
-              needs_review, review_note, review_images, review_flagged_at,
-              snoozed_until
+    RETURNING *
   `) as unknown as LinkRow[];
   return rows[0] ?? null;
 }
@@ -62,10 +59,7 @@ export async function updateLink(
       END,
       updated_at = NOW()
     WHERE id = ${id}
-    RETURNING id, url, company, title, source, status, notes,
-              created_at, updated_at, completed_at,
-              needs_review, review_note, review_images, review_flagged_at,
-              snoozed_until
+    RETURNING *
   `) as unknown as LinkRow[];
   return rows[0] ?? null;
 }
@@ -93,10 +87,7 @@ export async function setReview(
       review_flagged_at = NOW(),
       updated_at = NOW()
     WHERE id = ${id}
-    RETURNING id, url, company, title, source, status, notes,
-              created_at, updated_at, completed_at,
-              needs_review, review_note, review_images, review_flagged_at,
-              snoozed_until
+    RETURNING *
   `) as unknown as LinkRow[];
   return rows[0] ?? null;
 }
@@ -112,10 +103,28 @@ export async function clearReview(id: number): Promise<LinkRow | null> {
       review_flagged_at = NULL,
       updated_at = NOW()
     WHERE id = ${id}
-    RETURNING id, url, company, title, source, status, notes,
-              created_at, updated_at, completed_at,
-              needs_review, review_note, review_images, review_flagged_at,
-              snoozed_until
+    RETURNING *
+  `) as unknown as LinkRow[];
+  return rows[0] ?? null;
+}
+
+// Clear the review flag and set the link's status to 'applied' in a single
+// UPDATE so the "Reviewed & applied" admin action is one round-trip.
+export async function clearReviewAndApply(id: number): Promise<LinkRow | null> {
+  const sql = getSql();
+  const completedAt = new Date().toISOString();
+  const rows = (await sql`
+    UPDATE links
+    SET
+      needs_review = FALSE,
+      review_note = NULL,
+      review_images = NULL,
+      review_flagged_at = NULL,
+      status = 'applied',
+      completed_at = ${completedAt}::timestamptz,
+      updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING *
   `) as unknown as LinkRow[];
   return rows[0] ?? null;
 }
@@ -134,10 +143,7 @@ export async function setSnooze(
     UPDATE links
     SET snoozed_until = ${until}::timestamptz, updated_at = NOW()
     WHERE id = ${id}
-    RETURNING id, url, company, title, source, status, notes,
-              created_at, updated_at, completed_at,
-              needs_review, review_note, review_images, review_flagged_at,
-              snoozed_until
+    RETURNING *
   `) as unknown as LinkRow[];
   return rows[0] ?? null;
 }
@@ -148,10 +154,7 @@ export async function clearSnooze(id: number): Promise<LinkRow | null> {
     UPDATE links
     SET snoozed_until = NULL, updated_at = NOW()
     WHERE id = ${id}
-    RETURNING id, url, company, title, source, status, notes,
-              created_at, updated_at, completed_at,
-              needs_review, review_note, review_images, review_flagged_at,
-              snoozed_until
+    RETURNING *
   `) as unknown as LinkRow[];
   return rows[0] ?? null;
 }
@@ -252,11 +255,15 @@ export type EventSessionRow = {
 
 export async function listEventSessions(limit = 40): Promise<EventSessionRow[]> {
   const sql = getSql();
+  // Bound the scan to the last 90 days. The sidebar only ever shows the
+  // most recent ~40 sessions, so older events would be discarded anyway,
+  // and the unbounded scan would grow linearly with table size.
   const rows = (await sql`
     WITH ordered AS (
       SELECT id, role, type, created_at,
         LAG(created_at) OVER (PARTITION BY role, type ORDER BY created_at) AS prev_at
       FROM events
+      WHERE created_at >= NOW() - INTERVAL '90 days'
     ),
     marked AS (
       SELECT id, role, type, created_at,

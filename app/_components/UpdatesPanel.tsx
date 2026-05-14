@@ -122,6 +122,10 @@ export function UpdatesCard({ role, version = 0 }: { role: Role; version?: numbe
             const cutoff = lastSeen ? new Date(lastSeen).getTime() : 0;
             const isNew = s.role !== role && new Date(s.end_at).getTime() > cutoff;
             const verb = EVENT_VERB[s.type as EventType];
+            // Silently skip event types that aren't in EVENT_VERB. This is
+            // intentional: historical rows of since-retired event types
+            // ('rejected', 'interview', 'offer' from the 5-status era)
+            // remain in the DB and would otherwise render with no verb.
             if (!verb) return null;
             return (
               <li
