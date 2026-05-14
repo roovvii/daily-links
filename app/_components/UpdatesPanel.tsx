@@ -33,8 +33,7 @@ function roleLabel(roleStr: string): string {
   return roleStr;
 }
 
-export function UpdatesPanel({ role }: { role: Role }) {
-  const [open, setOpen] = useState(false);
+export function UpdatesCard({ role }: { role: Role }) {
   const [sessions, setSessions] = useState<EventSession[]>([]);
   const [lastSeen, setLastSeen] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,22 +44,24 @@ export function UpdatesPanel({ role }: { role: Role }) {
     return () => clearInterval(id);
   }, []);
 
-  async function fetchSessions() {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/events", { cache: "no-store" });
-      if (res.ok) {
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/events", { cache: "no-store" });
+        if (!res.ok) return;
         const data = await res.json();
+        if (cancelled) return;
         setSessions((data.sessions as EventSession[]) ?? []);
         setLastSeen((data.lastSeen as string | null) ?? null);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } finally {
-      setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    fetchSessions();
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const unreadCount = useMemo(() => {
@@ -68,89 +69,82 @@ export function UpdatesPanel({ role }: { role: Role }) {
     const cutoff = lastSeen ? new Date(lastSeen).getTime() : 0;
     let count = 0;
     for (const s of sessions) {
-      if (s.role === role) continue; // your own actions don't count as "new for you"
+      if (s.role === role) continue;
       if (new Date(s.end_at).getTime() > cutoff) count++;
     }
     return count;
   }, [sessions, lastSeen, role]);
 
-  async function handleToggle() {
-    const willOpen = !open;
-    setOpen(willOpen);
-    if (willOpen) {
-      // Refresh and mark seen
-      await fetchSessions();
+  // Mark seen a few seconds after load so the user has time to register the unread dots.
+  useEffect(() => {
+    if (loading || unreadCount === 0) return;
+    const id = setTimeout(async () => {
       try {
-        const res = await fetch("/api/events", { method: "POST" });
-        if (res.ok) {
-          const data = await res.json();
-          setLastSeen((data.seenAt as string) ?? new Date().toISOString());
-        }
+        await fetch("/api/events", { method: "POST" });
       } catch {
         // ignore
       }
-    }
-  }
+    }, 4000);
+    return () => clearTimeout(id);
+  }, [loading, unreadCount]);
 
   return (
-    <div className="mb-4 rounded-lg border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-      <button
-        onClick={handleToggle}
-        className="flex w-full items-center justify-between px-3 py-2 text-sm"
-      >
-        <span className="flex items-center gap-2">
-          <span className="font-medium">Recent updates</span>
-          {unreadCount > 0 && (
-            <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-medium text-white">
-              {unreadCount} new
-            </span>
-          )}
-        </span>
-        <span className="text-xs text-neutral-400">{open ? "Hide" : "Show"}</span>
-      </button>
+    <div className="rounded-lg border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+      <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2.5 dark:border-neutral-800">
+        <span className="text-sm font-medium">Recent updates</span>
+        {unreadCount > 0 && (
+          <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-medium text-white">
+            {unreadCount} new
+          </span>
+        )}
+      </div>
 
-      {open && (
-        <div className="border-t border-neutral-200 dark:border-neutral-800">
-          {loading ? (
-            <p className="px-3 py-4 text-xs text-neutral-500">Loading...</p>
-          ) : sessions.length === 0 ? (
-            <p className="px-3 py-4 text-xs text-neutral-500">No activity yet.</p>
-          ) : (
-            <ul className="max-h-72 divide-y divide-neutral-100 overflow-y-auto text-sm dark:divide-neutral-800">
-              {sessions.map((s, i) => {
-                const cutoff = lastSeen ? new Date(lastSeen).getTime() : 0;
-                const isNew = s.role !== role && new Date(s.end_at).getTime() > cutoff;
-                const verb = EVENT_VERB[s.type as EventType];
-                if (!verb) return null;
-                return (
-                  <li
-                    key={`${s.role}-${s.type}-${s.end_at}-${i}`}
-                    className="flex items-center justify-between gap-2 px-3 py-2"
-                  >
-                    <span className="flex items-center gap-2">
-                      {isNew && (
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500" aria-label="new" />
-                      )}
-                      <span>
-                        <span className="font-medium">{roleLabel(s.role)}</span>{" "}
-                        <span className="text-neutral-600 dark:text-neutral-300">
-                          {verb(s.count)}
-                        </span>
+      {loading ? (
+        <p className="px-3 py-4 text-xs text-neutral-500">Loading...</p>
+      ) : sessions.length === 0 ? (
+        <p className="px-3 py-6 text-center text-xs text-neutral-500">
+          No activity yet. Add or apply to a link and it&apos;ll show up here.
+        </p>
+      ) : (
+        <ul className="max-h-[420px] divide-y divide-neutral-100 overflow-y-auto text-sm dark:divide-neutral-800">
+          {sessions.map((s, i) => {
+            const cutoff = lastSeen ? new Date(lastSeen).getTime() : 0;
+            const isNew = s.role !== role && new Date(s.end_at).getTime() > cutoff;
+            const verb = EVENT_VERB[s.type as EventType];
+            if (!verb) return null;
+            return (
+              <li
+                key={`${s.role}-${s.type}-${s.end_at}-${i}`}
+                className="flex items-start justify-between gap-2 px-3 py-2.5"
+              >
+                <div className="flex min-w-0 items-start gap-2">
+                  {isNew && (
+                    <span
+                      className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500"
+                      aria-label="new"
+                    />
+                  )}
+                  <div className="min-w-0">
+                    <span className="text-sm">
+                      <span className="font-medium">{roleLabel(s.role)}</span>{" "}
+                      <span className="text-neutral-600 dark:text-neutral-300">
+                        {verb(s.count)}
                       </span>
                     </span>
-                    <time
-                      dateTime={s.end_at}
-                      title={new Date(s.end_at).toLocaleString()}
-                      className="shrink-0 text-xs text-neutral-400"
-                    >
-                      {relativeTime(s.end_at, now)}
-                    </time>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
+                  </div>
+                </div>
+                <time
+                  dateTime={s.end_at}
+                  title={new Date(s.end_at).toLocaleString()}
+                  className="shrink-0 text-[11px] text-neutral-400"
+                  suppressHydrationWarning
+                >
+                  {relativeTime(s.end_at, now)}
+                </time>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );

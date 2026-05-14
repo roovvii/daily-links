@@ -6,8 +6,8 @@ import { upload } from "@vercel/blob/client";
 import type { LinkRow, LinkStatus } from "@/lib/types";
 import { STATUS_LABEL, STATUS_OPTIONS } from "@/lib/types";
 import type { Role } from "@/lib/auth";
-import { ClockStrip } from "./ClockStrip";
-import { UpdatesPanel } from "./UpdatesPanel";
+import { ClockCard } from "./ClockStrip";
+import { UpdatesCard } from "./UpdatesPanel";
 
 type Filter = "active" | "review" | "done" | "all";
 
@@ -199,26 +199,24 @@ export function LinksApp({
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8">
-      <header className="mb-6 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold">Daily Links</h1>
-            <p className="text-sm text-neutral-500">
-              {counts.active} active, {counts.review} for review, {counts.done} done, {counts.total} total
-            </p>
-          </div>
-          <button
-            onClick={signOut}
-            className="text-xs text-neutral-500 underline-offset-2 hover:underline"
-          >
-            Sign out
-          </button>
+    <div className="mx-auto max-w-7xl px-4 py-6 lg:px-6">
+      <header className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Daily Links</h1>
+          <p className="text-sm text-neutral-500">
+            {counts.active} active, {counts.review} for review, {counts.done} done, {counts.total} total
+          </p>
         </div>
-        <ClockStrip />
+        <button
+          onClick={signOut}
+          className="text-xs text-neutral-500 underline-offset-2 hover:underline"
+        >
+          Sign out
+        </button>
       </header>
 
-      <UpdatesPanel role={role} />
+      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+        <main className="min-w-0">
 
       {dbError && (
         <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
@@ -313,7 +311,14 @@ export function LinksApp({
           )}
         </div>
       )}
-    </main>
+        </main>
+
+        <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
+          <ClockCard />
+          <UpdatesCard role={role} />
+        </aside>
+      </div>
+    </div>
   );
 }
 
