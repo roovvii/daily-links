@@ -536,6 +536,7 @@ function ReviewPanel({
   const [uploading, setUploading] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function uploadFiles(files: File[]) {
@@ -638,14 +639,19 @@ function ReviewPanel({
           <div className="mt-2 flex flex-wrap gap-2">
             {images.map((url, i) => (
               <div key={url + i} className="group relative">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <a href={url} target="_blank" rel="noreferrer">
+                <button
+                  type="button"
+                  onClick={() => setLightboxIdx(i)}
+                  className="block"
+                  aria-label="Open image"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={url}
                     alt=""
-                    className="h-16 w-16 rounded border border-neutral-300 object-cover dark:border-neutral-700"
+                    className="h-16 w-16 cursor-zoom-in rounded border border-neutral-300 object-cover dark:border-neutral-700"
                   />
-                </a>
+                </button>
                 <button
                   onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
                   className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-neutral-900 text-xs text-white group-hover:flex"
@@ -697,6 +703,130 @@ function ReviewPanel({
           </span>
         )}
       </div>
+      {lightboxIdx !== null && (
+        <Lightbox
+          images={images}
+          index={lightboxIdx}
+          onIndexChange={setLightboxIdx}
+          onClose={() => setLightboxIdx(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function Lightbox({
+  images,
+  index,
+  onIndexChange,
+  onClose,
+}: {
+  images: string[];
+  index: number;
+  onIndexChange: (i: number) => void;
+  onClose: () => void;
+}) {
+  const [zoomed, setZoomed] = useState(false);
+  const url = images[index];
+
+  useEffect(() => {
+    setZoomed(false);
+  }, [index]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowRight" && index < images.length - 1)
+        onIndexChange(index + 1);
+      else if (e.key === "ArrowLeft" && index > 0) onIndexChange(index - 1);
+    };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [index, images.length, onClose, onIndexChange]);
+
+  if (!url) return null;
+  const hasPrev = index > 0;
+  const hasNext = index < images.length - 1;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
+        className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-lg text-white hover:bg-white/25"
+        aria-label="Close (Esc)"
+      >
+        ×
+      </button>
+
+      {images.length > 1 && (
+        <span className="absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-full bg-white/10 px-3 py-1 text-xs text-white">
+          {index + 1} / {images.length}
+        </span>
+      )}
+
+      {hasPrev && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onIndexChange(index - 1);
+          }}
+          className="absolute left-4 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-xl text-white hover:bg-white/25"
+          aria-label="Previous image"
+        >
+          ‹
+        </button>
+      )}
+      {hasNext && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onIndexChange(index + 1);
+          }}
+          className="absolute right-4 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-xl text-white hover:bg-white/25"
+          aria-label="Next image"
+        >
+          ›
+        </button>
+      )}
+
+      <div
+        className="h-full w-full overflow-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex min-h-full min-w-full items-center justify-center p-6">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt=""
+            onClick={() => setZoomed((z) => !z)}
+            className={
+              zoomed
+                ? "max-w-none cursor-zoom-out"
+                : "max-h-[90vh] max-w-[90vw] cursor-zoom-in object-contain"
+            }
+          />
+        </div>
+      </div>
+
+      <span className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[11px] text-white/70">
+        click image to {zoomed ? "shrink" : "zoom"} · Esc to close
+        {images.length > 1 ? " · ← → to navigate" : ""}
+      </span>
     </div>
   );
 }
