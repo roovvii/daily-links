@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
-import type { LinkRow, LinkStatus } from "@/lib/types";
-import { STATUS_LABEL, STATUS_OPTIONS } from "@/lib/types";
+import type { LinkRow } from "@/lib/types";
 import type { Role } from "@/lib/auth";
 import { ClockCard } from "./ClockStrip";
 import { UpdatesCard } from "./UpdatesPanel";
@@ -12,14 +11,6 @@ import { TrendChart } from "./TrendChart";
 import { TodayStats } from "./TodayStats";
 
 type Filter = "active" | "review" | "done" | "all";
-
-const STATUS_COLORS: Record<LinkStatus, string> = {
-  todo: "bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300",
-  applied: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300",
-  interview: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-  rejected: "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300",
-  offer: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
-};
 
 const FILTER_LABEL: Record<Filter, string> = {
   active: "Active",
@@ -652,17 +643,6 @@ function LinkItem({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <select
-            value={link.status}
-            onChange={(e) => onPatch(link.id, { status: e.target.value as LinkStatus })}
-            className={`rounded-full px-2 py-0.5 text-xs ${STATUS_COLORS[link.status]} border-0 outline-none`}
-          >
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABEL[s]}
-              </option>
-            ))}
-          </select>
           {filterIsReview && link.needs_review ? (
             isAdmin ? (
               <>
@@ -873,9 +853,6 @@ type LinkEvent = { role: string; type: string; created_at: string };
 const EVENT_DESC: Record<string, string> = {
   added: "added",
   applied: "marked applied",
-  rejected: "marked rejected",
-  interview: "moved to interview",
-  offer: "moved to offer",
   flagged: "flagged for review",
   reviewed: "marked reviewed",
 };

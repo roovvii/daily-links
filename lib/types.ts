@@ -1,21 +1,15 @@
-export type LinkStatus = "todo" | "applied" | "interview" | "rejected" | "offer";
+export type LinkStatus = "todo" | "applied";
 
-export const STATUS_OPTIONS: LinkStatus[] = ["todo", "applied", "interview", "rejected", "offer"];
+export const STATUS_OPTIONS: LinkStatus[] = ["todo", "applied"];
 
 export const STATUS_LABEL: Record<LinkStatus, string> = {
   todo: "To do",
   applied: "Applied",
-  interview: "Interview",
-  rejected: "Rejected",
-  offer: "Offer",
 };
 
 export type EventType =
   | "added"
   | "applied"
-  | "rejected"
-  | "interview"
-  | "offer"
   | "flagged"
   | "reviewed"
   | "snoozed"

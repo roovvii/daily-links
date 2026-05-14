@@ -7,9 +7,6 @@ import { ROLE_LABEL, type Role } from "@/lib/auth";
 const EVENT_VERB: Record<EventType, (count: number) => string> = {
   added: (n) => `added ${n} link${n === 1 ? "" : "s"}`,
   applied: (n) => `applied to ${n} link${n === 1 ? "" : "s"}`,
-  rejected: (n) => `marked ${n} as rejected`,
-  interview: (n) => `moved ${n} to Interview`,
-  offer: (n) => `got an offer on ${n} link${n === 1 ? "" : "s"}`,
   flagged: (n) => `flagged ${n} for review`,
   reviewed: (n) => `reviewed ${n} link${n === 1 ? "" : "s"}`,
   snoozed: (n) => `snoozed ${n} link${n === 1 ? "" : "s"}`,

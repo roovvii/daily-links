@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:init": "tsx scripts/init-db.ts"
+    "db:init": "tsx scripts/init-db.ts",
+    "db:migrate-statuses": "tsx scripts/migrate-statuses.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
