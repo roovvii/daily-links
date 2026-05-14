@@ -262,7 +262,19 @@ export function LinksApp({
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 lg:px-6">
       <header className="mb-6 flex items-start justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">Daily Links</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">Daily Links</h1>
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+              role === "ravi"
+                ? "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
+                : "bg-pink-100 text-pink-700 dark:bg-pink-950/60 dark:text-pink-300"
+            }`}
+            title="The profile you are signed in as"
+          >
+            {role}
+          </span>
+        </div>
         <div className="flex items-center gap-3 text-xs text-neutral-500">
           {isAdmin && (
             <a
