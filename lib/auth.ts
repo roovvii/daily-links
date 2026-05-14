@@ -7,11 +7,6 @@ export const ROLE_LABEL: Record<Role, string> = {
   sreeya: "Sreeya",
 };
 
-export const ROLE_TZ: Record<Role, string> = {
-  ravi: "America/Chicago",
-  sreeya: "Asia/Kolkata",
-};
-
 function getSecret(): string {
   const secret = process.env.AUTH_SECRET;
   if (!secret) throw new Error("AUTH_SECRET is not set");

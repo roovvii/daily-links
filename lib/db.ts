@@ -1,6 +1,5 @@
 import { neon } from "@neondatabase/serverless";
 import type { LinkRow, LinkStatus } from "./types";
-import { ROLE_TZ } from "./auth";
 
 function getSql() {
   const url = process.env.DATABASE_URL;
@@ -155,20 +154,18 @@ export type TodayCount = { role: string; count: number };
 
 export async function getTodayApplyCounts(): Promise<TodayCount[]> {
   const sql = getSql();
-  const raviTz = ROLE_TZ.ravi;
-  const sreeyaTz = ROLE_TZ.sreeya;
   const rows = (await sql`
     SELECT role, COUNT(*)::int AS count
     FROM events
     WHERE type = 'applied'
       AND (
         (role = 'ravi'
-          AND (created_at AT TIME ZONE ${raviTz})::date
-              = (NOW() AT TIME ZONE ${raviTz})::date)
+          AND (created_at AT TIME ZONE 'America/Chicago')::date
+              = (NOW() AT TIME ZONE 'America/Chicago')::date)
         OR
         (role = 'sreeya'
-          AND (created_at AT TIME ZONE ${sreeyaTz})::date
-              = (NOW() AT TIME ZONE ${sreeyaTz})::date)
+          AND (created_at AT TIME ZONE 'Asia/Kolkata')::date
+              = (NOW() AT TIME ZONE 'Asia/Kolkata')::date)
       )
     GROUP BY role
   `) as unknown as TodayCount[];
