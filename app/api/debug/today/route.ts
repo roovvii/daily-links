@@ -20,8 +20,9 @@ export async function GET(req: Request) {
 
   const sql = getSql();
 
-  // 1) What the production SQL returns right now.
-  const counts = await sql`
+  // 1) The production count + alternative definitions so we can see which
+  // one (if any) updates correctly when a fresh link is checked.
+  const counts_optionB = await sql`
     SELECT e.role, COUNT(DISTINCT e.link_id)::int AS count
     FROM events e
     JOIN links l ON l.id = e.link_id
@@ -37,6 +38,56 @@ export async function GET(req: Request) {
               = (NOW() AT TIME ZONE 'Asia/Kolkata')::date)
       )
     GROUP BY e.role
+  `;
+  // Without the l.status filter (distinct apply events today)
+  const counts_optionA = await sql`
+    SELECT role, COUNT(DISTINCT link_id)::int AS count
+    FROM events
+    WHERE type = 'applied'
+      AND link_id IS NOT NULL
+      AND (
+        (role = 'ravi'
+          AND (created_at AT TIME ZONE 'America/Chicago')::date
+              = (NOW() AT TIME ZONE 'America/Chicago')::date)
+        OR
+        (role = 'sreeya'
+          AND (created_at AT TIME ZONE 'Asia/Kolkata')::date
+              = (NOW() AT TIME ZONE 'Asia/Kolkata')::date)
+      )
+    GROUP BY role
+  `;
+  // Raw apply events today (no DISTINCT, no status filter)
+  const counts_raw = await sql`
+    SELECT role, COUNT(*)::int AS count
+    FROM events
+    WHERE type = 'applied'
+      AND (
+        (role = 'ravi'
+          AND (created_at AT TIME ZONE 'America/Chicago')::date
+              = (NOW() AT TIME ZONE 'America/Chicago')::date)
+        OR
+        (role = 'sreeya'
+          AND (created_at AT TIME ZONE 'Asia/Kolkata')::date
+              = (NOW() AT TIME ZONE 'Asia/Kolkata')::date)
+      )
+    GROUP BY role
+  `;
+
+  // The full list of link_ids contributing to the production count for the
+  // calling role, with each link's current status. Lets us see whether a
+  // freshly-checked link actually joins the set or was already in it.
+  const contributingLinks = await sql`
+    SELECT DISTINCT e.link_id, l.status, l.company, l.title,
+                    MAX(e.created_at)::text AS most_recent_event_at
+    FROM events e
+    JOIN links l ON l.id = e.link_id
+    WHERE e.type = 'applied'
+      AND l.status = 'applied'
+      AND e.role = ${role}
+      AND (e.created_at AT TIME ZONE ${role === "ravi" ? "America/Chicago" : "Asia/Kolkata"})::date
+          = (NOW() AT TIME ZONE ${role === "ravi" ? "America/Chicago" : "Asia/Kolkata"})::date
+    GROUP BY e.link_id, l.status, l.company, l.title
+    ORDER BY most_recent_event_at DESC
   `;
 
   // 2) The 5 most recent applied events for the calling role, joined with
@@ -82,9 +133,15 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     role,
-    counts,
+    counts_optionB,
+    counts_optionA,
+    counts_raw,
+    contributing_links_for_role: contributingLinks,
     recent_events_for_role: recent,
     events_table_schema: schema,
     now,
+    server_time_when_query_ran: new Date().toISOString(),
+  }, {
+    headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
   });
 }
