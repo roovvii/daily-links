@@ -88,9 +88,9 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
     let done = 0;
     let review = 0;
     for (const l of links) {
-      if (l.status === "todo") active++;
-      else done++;
       if (l.needs_review) review++;
+      else if (l.status === "todo") active++;
+      else done++;
     }
     return { active, done, review, total: links.length };
   }, [links]);
@@ -98,8 +98,9 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
   const visible = useMemo(() => {
     if (filter === "all") return links;
     if (filter === "review") return links.filter((l) => l.needs_review);
-    if (filter === "done") return links.filter((l) => l.status !== "todo");
-    return links.filter((l) => l.status === "todo");
+    if (filter === "done")
+      return links.filter((l) => !l.needs_review && l.status !== "todo");
+    return links.filter((l) => !l.needs_review && l.status === "todo");
   }, [links, filter]);
 
   function onAdd(e: React.FormEvent) {
@@ -165,6 +166,11 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
     if (!res.ok) return;
     const data = await res.json();
     replaceLink(data.link as LinkRow);
+  }
+
+  async function clearReviewAndApply(id: number) {
+    await clearReview(id);
+    await patchLink(id, { status: "applied" });
   }
 
   async function removeLink(id: number) {
@@ -278,6 +284,7 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
                       onDelete={removeLink}
                       onSaveReview={saveReview}
                       onClearReview={clearReview}
+                      onClearReviewAndApply={clearReviewAndApply}
                     />
                   ))}
                 </ul>
@@ -298,6 +305,7 @@ function LinkItem({
   onDelete,
   onSaveReview,
   onClearReview,
+  onClearReviewAndApply,
 }: {
   link: LinkRow;
   mounted: boolean;
@@ -306,12 +314,18 @@ function LinkItem({
   onDelete: (id: number) => void;
   onSaveReview: (id: number, note: string, images: string[]) => Promise<boolean>;
   onClearReview: (id: number) => void;
+  onClearReviewAndApply: (id: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [panelHiddenInReview, setPanelHiddenInReview] = useState(false);
   const [company, setCompany] = useState(link.company ?? "");
   const [title, setTitle] = useState(link.title ?? "");
   const checked = link.status !== "todo";
+
+  const showPanel = filterIsReview
+    ? link.needs_review && !panelHiddenInReview
+    : reviewOpen;
 
   function toggleChecked() {
     onPatch(link.id, { status: checked ? "todo" : "applied" });
@@ -442,17 +456,36 @@ function LinkItem({
               </option>
             ))}
           </select>
-          <button
-            onClick={() => setReviewOpen((v) => !v)}
-            className={`text-xs ${
-              link.needs_review
-                ? "text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200"
-                : "text-neutral-400 hover:text-amber-700"
-            }`}
-            title={link.needs_review ? "View review request" : "Flag for review"}
-          >
-            {link.needs_review ? "Review" : "Flag"}
-          </button>
+          {filterIsReview && link.needs_review ? (
+            <>
+              <button
+                onClick={() => onClearReview(link.id)}
+                className="rounded border border-emerald-600 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                title="Clear the review flag (keeps current status)"
+              >
+                Mark reviewed
+              </button>
+              <button
+                onClick={() => onClearReviewAndApply(link.id)}
+                className="rounded bg-emerald-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-emerald-700"
+                title="Clear flag and set status to Applied"
+              >
+                Reviewed &amp; applied
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setReviewOpen((v) => !v)}
+              className={`text-xs ${
+                link.needs_review
+                  ? "text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200"
+                  : "text-neutral-400 hover:text-amber-700"
+              }`}
+              title={link.needs_review ? "View review request" : "Flag for review"}
+            >
+              {link.needs_review ? "Review" : "Flag"}
+            </button>
+          )}
           <button
             onClick={() => setEditing((v) => !v)}
             className="text-xs text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
@@ -468,15 +501,19 @@ function LinkItem({
         </div>
       </div>
 
-      {(reviewOpen || (filterIsReview && link.needs_review)) && (
+      {showPanel && (
         <ReviewPanel
           link={link}
           onSave={onSaveReview}
           onClear={() => {
             onClearReview(link.id);
             setReviewOpen(false);
+            setPanelHiddenInReview(true);
           }}
-          onClose={() => setReviewOpen(false)}
+          onClose={() => {
+            if (filterIsReview) setPanelHiddenInReview(true);
+            else setReviewOpen(false);
+          }}
         />
       )}
     </li>
