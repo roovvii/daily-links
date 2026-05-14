@@ -266,24 +266,6 @@ export function LinksApp({
         </form>
       )}
 
-      <div className="mb-3 flex items-center gap-2">
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search company, title, URL, notes..."
-          className="w-full rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-950"
-        />
-        {search && (
-          <button
-            onClick={() => setSearch("")}
-            className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
-          >
-            Clear
-          </button>
-        )}
-      </div>
-
       <div className="mb-3 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
         {(["active", "review", "done", "all"] as const).map((f) => {
           const count =
@@ -349,6 +331,24 @@ export function LinksApp({
         </main>
 
         <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
+          <div className="relative">
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search company, title, URL, notes..."
+              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 pr-8 text-sm shadow-sm outline-none focus:border-neutral-500 dark:border-neutral-800 dark:bg-neutral-900"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+                aria-label="Clear search"
+              >
+                ×
+              </button>
+            )}
+          </div>
           <ClockCard />
           <UpdatesCard role={role} />
         </aside>
