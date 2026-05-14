@@ -373,7 +373,8 @@ export function LinksApp({
       )}
         </main>
 
-        <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
+        <aside className="space-y-4 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
+
           <div className="relative">
             <input
               type="search"
