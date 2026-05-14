@@ -71,3 +71,21 @@ export function passwordMatches(role: Role, input: string): boolean {
   if (!expected) return false;
   return constantTimeEqual(input, expected);
 }
+
+function parseCookieHeader(header: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of header.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    const k = part.slice(0, eq).trim();
+    const v = part.slice(eq + 1).trim();
+    if (k) out[k] = decodeURIComponent(v);
+  }
+  return out;
+}
+
+export async function getRoleFromRequest(req: Request): Promise<Role | null> {
+  const header = req.headers.get("cookie") ?? "";
+  const cookies = parseCookieHeader(header);
+  return verifyAuthToken(cookies[AUTH_COOKIE]);
+}

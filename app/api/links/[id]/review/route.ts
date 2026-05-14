@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { clearReview, setReview } from "@/lib/db";
+import { clearReview, insertEvent, setReview } from "@/lib/db";
+import { getRoleFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,7 @@ function parseId(idStr: string): number | null {
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const id = parseId(params.id);
   if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+  const role = (await getRoleFromRequest(req)) ?? "ravi";
 
   const body = await req.json().catch(() => ({}));
   const note = typeof body.note === "string" ? body.note.slice(0, 4000) : "";
@@ -22,15 +24,21 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: "note or image required" }, { status: 400 });
   }
 
+  const wasFlagged = false; // We always treat this as a fresh flag for event purposes
   const row = await setReview(id, note, images);
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (!wasFlagged) {
+    await insertEvent(role, "flagged", id);
+  }
   return NextResponse.json({ link: row });
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   const id = parseId(params.id);
   if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+  const role = (await getRoleFromRequest(req)) ?? "ravi";
   const row = await clearReview(id);
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
+  await insertEvent(role, "reviewed", id);
   return NextResponse.json({ link: row });
 }

@@ -111,3 +111,87 @@ export async function deleteLink(id: number): Promise<void> {
   const sql = getSql();
   await sql`DELETE FROM links WHERE id = ${id}`;
 }
+
+export async function insertEvent(
+  role: string,
+  type: string,
+  linkId: number | null
+): Promise<void> {
+  const sql = getSql();
+  await sql`
+    INSERT INTO events (role, type, link_id)
+    VALUES (${role}, ${type}, ${linkId})
+  `;
+}
+
+export async function insertEventsBulk(
+  role: string,
+  type: string,
+  linkIds: number[]
+): Promise<void> {
+  if (linkIds.length === 0) return;
+  const sql = getSql();
+  for (const id of linkIds) {
+    await sql`
+      INSERT INTO events (role, type, link_id)
+      VALUES (${role}, ${type}, ${id})
+    `;
+  }
+}
+
+export type EventSessionRow = {
+  role: string;
+  type: string;
+  count: number;
+  start_at: string;
+  end_at: string;
+};
+
+export async function listEventSessions(limit = 40): Promise<EventSessionRow[]> {
+  const sql = getSql();
+  const rows = (await sql`
+    WITH ordered AS (
+      SELECT id, role, type, created_at,
+        LAG(created_at) OVER (PARTITION BY role, type ORDER BY created_at) AS prev_at
+      FROM events
+    ),
+    marked AS (
+      SELECT id, role, type, created_at,
+        CASE WHEN prev_at IS NULL OR created_at - prev_at > interval '30 minutes' THEN 1 ELSE 0 END AS is_new
+      FROM ordered
+    ),
+    sessioned AS (
+      SELECT id, role, type, created_at,
+        SUM(is_new) OVER (PARTITION BY role, type ORDER BY created_at) AS session_id
+      FROM marked
+    )
+    SELECT role, type,
+           COUNT(*)::int AS count,
+           MIN(created_at)::text AS start_at,
+           MAX(created_at)::text AS end_at
+    FROM sessioned
+    GROUP BY role, type, session_id
+    ORDER BY MAX(created_at) DESC
+    LIMIT ${limit}
+  `) as unknown as EventSessionRow[];
+  return rows;
+}
+
+export async function getLastSeen(role: string): Promise<string | null> {
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT seen_at FROM last_seen WHERE role = ${role}
+  `) as unknown as { seen_at: string }[];
+  return rows[0]?.seen_at ?? null;
+}
+
+export async function setLastSeen(role: string): Promise<string> {
+  const sql = getSql();
+  const rows = (await sql`
+    INSERT INTO last_seen (role, seen_at)
+    VALUES (${role}, NOW())
+    ON CONFLICT (role) DO UPDATE SET seen_at = NOW()
+    RETURNING seen_at
+  `) as unknown as { seen_at: string }[];
+  return rows[0].seen_at;
+}

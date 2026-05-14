@@ -10,6 +10,24 @@ export const STATUS_LABEL: Record<LinkStatus, string> = {
   offer: "Offer",
 };
 
+export type EventType =
+  | "added"
+  | "applied"
+  | "rejected"
+  | "interview"
+  | "offer"
+  | "flagged"
+  | "reviewed"
+  | "deleted";
+
+export type EventSession = {
+  role: string;
+  type: EventType;
+  count: number;
+  start_at: string;
+  end_at: string;
+};
+
 export type LinkRow = {
   id: number;
   url: string;

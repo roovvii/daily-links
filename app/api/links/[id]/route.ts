@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { deleteLink, updateLink } from "@/lib/db";
+import { deleteLink, insertEvent, updateLink } from "@/lib/db";
+import { getRoleFromRequest } from "@/lib/auth";
 import type { LinkStatus } from "@/lib/types";
 import { STATUS_OPTIONS } from "@/lib/types";
 
@@ -13,6 +14,7 @@ function parseId(idStr: string): number | null {
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const id = parseId(params.id);
   if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+  const role = (await getRoleFromRequest(req)) ?? "ravi";
 
   const body = await req.json().catch(() => ({}));
   const patch: {
@@ -30,12 +32,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const row = await updateLink(id, patch);
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (patch.status && patch.status !== "todo") {
+    await insertEvent(role, patch.status, id);
+  }
   return NextResponse.json({ link: row });
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   const id = parseId(params.id);
   if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+  const role = (await getRoleFromRequest(req)) ?? "ravi";
   await deleteLink(id);
+  await insertEvent(role, "deleted", null);
   return NextResponse.json({ ok: true });
 }

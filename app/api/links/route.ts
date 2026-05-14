@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { createLink, listLinks } from "@/lib/db";
+import { createLink, insertEventsBulk, listLinks } from "@/lib/db";
 import { parseLink, splitUrls } from "@/lib/parser";
+import { getRoleFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const role = (await getRoleFromRequest(req)) ?? "ravi";
   const body = await req.json().catch(() => ({}));
   const raw = typeof body.text === "string" ? body.text : "";
   const urls = splitUrls(raw);
@@ -29,6 +31,9 @@ export async function POST(req: Request) {
     });
     if (row) created.push(row);
     else skipped++;
+  }
+  if (created.length > 0) {
+    await insertEventsBulk(role, "added", created.map((c) => c.id));
   }
   return NextResponse.json({ created, skipped });
 }
