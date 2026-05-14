@@ -152,21 +152,17 @@ export type DailyApplyRow = { role: string; day: string; count: number };
 
 export type TodayCount = { role: string; count: number };
 
-export async function getTodayApplyCounts(): Promise<TodayCount[]> {
+export async function getApplyCountsInRange(
+  fromIso: string,
+  toIso: string
+): Promise<TodayCount[]> {
   const sql = getSql();
   const rows = (await sql`
     SELECT role, COUNT(*)::int AS count
     FROM events
     WHERE type = 'applied'
-      AND (
-        (role = 'ravi'
-          AND (created_at AT TIME ZONE 'America/Chicago')::date
-              = (NOW() AT TIME ZONE 'America/Chicago')::date)
-        OR
-        (role = 'sreeya'
-          AND (created_at AT TIME ZONE 'Asia/Kolkata')::date
-              = (NOW() AT TIME ZONE 'Asia/Kolkata')::date)
-      )
+      AND created_at >= ${fromIso}::timestamptz
+      AND created_at < ${toIso}::timestamptz
     GROUP BY role
   `) as unknown as TodayCount[];
   return rows;
