@@ -150,6 +150,28 @@ export async function clearSnooze(id: number): Promise<LinkRow | null> {
 
 export type DailyApplyRow = { role: string; day: string; count: number };
 
+export type TodayCount = { role: string; count: number };
+
+export async function getTodayApplyCounts(): Promise<TodayCount[]> {
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT role, COUNT(*)::int AS count
+    FROM events
+    WHERE type = 'applied'
+      AND (
+        (role = 'ravi'
+          AND (created_at AT TIME ZONE 'America/Chicago')::date
+              = (NOW() AT TIME ZONE 'America/Chicago')::date)
+        OR
+        (role = 'sreeya'
+          AND (created_at AT TIME ZONE 'Asia/Kolkata')::date
+              = (NOW() AT TIME ZONE 'Asia/Kolkata')::date)
+      )
+    GROUP BY role
+  `) as unknown as TodayCount[];
+  return rows;
+}
+
 export async function listDailyApplies(days = 14): Promise<DailyApplyRow[]> {
   const sql = getSql();
   const rows = (await sql`

@@ -9,6 +9,7 @@ import type { Role } from "@/lib/auth";
 import { ClockCard } from "./ClockStrip";
 import { UpdatesCard } from "./UpdatesPanel";
 import { TrendChart } from "./TrendChart";
+import { TodayStats } from "./TodayStats";
 
 type Filter = "active" | "review" | "done" | "all";
 
@@ -396,6 +397,7 @@ export function LinksApp({
           <ClockCard />
           <UpdatesCard role={role} />
           <TrendChart />
+          <TodayStats />
         </aside>
       </div>
     </div>
