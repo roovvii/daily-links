@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { LinkRow, LinkStatus } from "@/lib/types";
 import { STATUS_LABEL, STATUS_OPTIONS } from "@/lib/types";
@@ -72,6 +72,8 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
   const [text, setText] = useState("");
   const [adding, startAdd] = useTransition();
   const [addMsg, setAddMsg] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const counts = useMemo(() => {
     let active = 0;
@@ -212,17 +214,28 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
         </p>
       ) : (
         <div className="space-y-4">
-          {groupByDate(visible).map((group) => (
-            <section key={group.label}>
-              <h2 className="mb-1.5 px-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
-                {group.label}
-                <span className="ml-2 font-normal normal-case tracking-normal text-neutral-400">
-                  {group.items.length} link{group.items.length === 1 ? "" : "s"}
-                </span>
-              </h2>
+          {(mounted
+            ? groupByDate(visible)
+            : [{ label: "", items: visible }]
+          ).map((group, idx) => (
+            <section key={group.label || `pre-${idx}`}>
+              {mounted && group.label && (
+                <h2 className="mb-1.5 px-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                  {group.label}
+                  <span className="ml-2 font-normal normal-case tracking-normal text-neutral-400">
+                    {group.items.length} link{group.items.length === 1 ? "" : "s"}
+                  </span>
+                </h2>
+              )}
               <ul className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white dark:divide-neutral-800 dark:border-neutral-800 dark:bg-neutral-900">
                 {group.items.map((l) => (
-                  <LinkItem key={l.id} link={l} onPatch={patchLink} onDelete={removeLink} />
+                  <LinkItem
+                    key={l.id}
+                    link={l}
+                    mounted={mounted}
+                    onPatch={patchLink}
+                    onDelete={removeLink}
+                  />
                 ))}
               </ul>
             </section>
@@ -235,10 +248,12 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
 
 function LinkItem({
   link,
+  mounted,
   onPatch,
   onDelete,
 }: {
   link: LinkRow;
+  mounted: boolean;
   onPatch: (id: number, body: Partial<LinkRow>) => void;
   onDelete: (id: number) => void;
 }) {
@@ -336,10 +351,17 @@ function LinkItem({
               >
                 {hostOf(link.url)}
               </a>
-              <span>·</span>
-              <time dateTime={link.created_at} title={new Date(link.created_at).toLocaleString()}>
-                {formatTime(link.created_at)}
-              </time>
+              {mounted && (
+                <>
+                  <span>·</span>
+                  <time
+                    dateTime={link.created_at}
+                    title={new Date(link.created_at).toLocaleString()}
+                  >
+                    {formatTime(link.created_at)}
+                  </time>
+                </>
+              )}
             </div>
           </div>
         )}
