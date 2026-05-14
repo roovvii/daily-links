@@ -59,7 +59,7 @@ function buildDayList(n: number): string[] {
   return out;
 }
 
-export function TrendChart() {
+export function TrendChart({ version = 0 }: { version?: number }) {
   const [preset, setPreset] = useState<RangePreset>("14d");
   const [data, setData] = useState<DailyRow[] | null>(null);
 
@@ -82,7 +82,7 @@ export function TrendChart() {
     return () => {
       cancelled = true;
     };
-  }, [days]);
+  }, [days, version]);
 
   const { roles, series, maxVal, dayList } = useMemo(() => {
     const list = buildDayList(days);

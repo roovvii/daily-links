@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 type Counts = { ravi: number; sreeya: number };
 
-export function TodayStats() {
+export function TodayStats({ version = 0 }: { version?: number }) {
   const [counts, setCounts] = useState<Counts | null>(null);
 
   useEffect(() => {
@@ -26,7 +26,7 @@ export function TodayStats() {
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
+  }, [version]);
 
   return (
     <div className="rounded-lg border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">

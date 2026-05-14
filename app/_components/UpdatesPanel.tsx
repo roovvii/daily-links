@@ -34,7 +34,7 @@ function roleLabel(roleStr: string): string {
   return roleStr;
 }
 
-export function UpdatesCard({ role }: { role: Role }) {
+export function UpdatesCard({ role, version = 0 }: { role: Role; version?: number }) {
   const [sessions, setSessions] = useState<EventSession[]>([]);
   const [lastSeen, setLastSeen] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,7 +64,7 @@ export function UpdatesCard({ role }: { role: Role }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [version]);
 
   const unreadCount = useMemo(() => {
     if (!sessions.length) return 0;

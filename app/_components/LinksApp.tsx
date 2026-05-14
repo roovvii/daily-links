@@ -103,6 +103,11 @@ export function LinksApp({
     return () => clearInterval(id);
   }, []);
 
+  const [statsVersion, setStatsVersion] = useState(0);
+  function bumpStats() {
+    setStatsVersion((v) => v + 1);
+  }
+
   function isSnoozed(l: LinkRow): boolean {
     return !!l.snoozed_until && new Date(l.snoozed_until).getTime() > now;
   }
@@ -170,6 +175,7 @@ export function LinksApp({
       if (added.length) parts.push(`Added ${added.length}`);
       if (skipped) parts.push(`${skipped} duplicate${skipped === 1 ? "" : "s"} skipped`);
       setAddMsg(parts.join(", ") || null);
+      if (added.length) bumpStats();
       router.refresh();
     });
   }
@@ -187,6 +193,7 @@ export function LinksApp({
     if (!res.ok) return;
     const data = await res.json();
     replaceLink(data.link as LinkRow);
+    if (body.status) bumpStats();
   }
 
   async function saveReview(id: number, note: string, images: string[]) {
@@ -202,6 +209,7 @@ export function LinksApp({
     }
     const data = await res.json();
     replaceLink(data.link as LinkRow);
+    bumpStats();
     return true;
   }
 
@@ -210,6 +218,7 @@ export function LinksApp({
     if (!res.ok) return;
     const data = await res.json();
     replaceLink(data.link as LinkRow);
+    bumpStats();
   }
 
   async function clearReviewAndApply(id: number) {
@@ -222,6 +231,7 @@ export function LinksApp({
     const res = await fetch(`/api/links/${id}`, { method: "DELETE" });
     if (!res.ok) return;
     setLinks((prev) => prev.filter((l) => l.id !== id));
+    bumpStats();
   }
 
   async function snoozeLink(id: number, untilIso: string) {
@@ -233,6 +243,7 @@ export function LinksApp({
     if (!res.ok) return;
     const data = await res.json();
     replaceLink(data.link as LinkRow);
+    bumpStats();
   }
 
   async function unsnoozeLink(id: number) {
@@ -395,9 +406,9 @@ export function LinksApp({
             )}
           </div>
           <ClockCard />
-          <UpdatesCard role={role} />
-          <TrendChart />
-          <TodayStats />
+          <UpdatesCard role={role} version={statsVersion} />
+          <TrendChart version={statsVersion} />
+          <TodayStats version={statsVersion} />
         </aside>
       </div>
     </div>
