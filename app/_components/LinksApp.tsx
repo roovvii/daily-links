@@ -400,8 +400,8 @@ export function LinksApp({
           </div>
           <ClockCard />
           <UpdatesCard role={role} version={statsVersion} />
-          <TrendChart version={statsVersion} />
           <TodayStats version={statsVersion} />
+          <TrendChart version={statsVersion} />
         </aside>
       </div>
     </div>

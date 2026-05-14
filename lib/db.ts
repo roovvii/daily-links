@@ -165,23 +165,28 @@ export type TodayCount = { role: string; count: number };
 
 export async function getTodayApplyCounts(): Promise<TodayCount[]> {
   const sql = getSql();
-  // COUNT(DISTINCT link_id) so toggling the same link off and on again
-  // (which inserts a second 'applied' event) doesn't double-count.
+  // "Applied today" = distinct links that are currently checked (status =
+  // 'applied') AND have an 'applied' event today in the role's own
+  // timezone. This makes the counter match what's visibly checked: it
+  // goes up when you check, down when you uncheck, back up when you
+  // re-check. The JOIN against links also drops events whose link was
+  // since deleted.
   const rows = (await sql`
-    SELECT role, COUNT(DISTINCT link_id)::int AS count
-    FROM events
-    WHERE type = 'applied'
-      AND link_id IS NOT NULL
+    SELECT e.role, COUNT(DISTINCT e.link_id)::int AS count
+    FROM events e
+    JOIN links l ON l.id = e.link_id
+    WHERE e.type = 'applied'
+      AND l.status = 'applied'
       AND (
-        (role = 'ravi'
-          AND (created_at AT TIME ZONE 'America/Chicago')::date
+        (e.role = 'ravi'
+          AND (e.created_at AT TIME ZONE 'America/Chicago')::date
               = (NOW() AT TIME ZONE 'America/Chicago')::date)
         OR
-        (role = 'sreeya'
-          AND (created_at AT TIME ZONE 'Asia/Kolkata')::date
+        (e.role = 'sreeya'
+          AND (e.created_at AT TIME ZONE 'Asia/Kolkata')::date
               = (NOW() AT TIME ZONE 'Asia/Kolkata')::date)
       )
-    GROUP BY role
+    GROUP BY e.role
   `) as unknown as TodayCount[];
   return rows;
 }
