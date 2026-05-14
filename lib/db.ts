@@ -1,5 +1,13 @@
-import { neon } from "@neondatabase/serverless";
+import { neon, neonConfig } from "@neondatabase/serverless";
 import type { LinkRow, LinkStatus } from "./types";
+
+// Neon's serverless driver issues SQL queries via fetch(). On Vercel, fetch()
+// goes through Next.js's Data Cache by default and caches responses by URL +
+// body — which means every SQL query string gets a long-lived cache entry,
+// freezing results across requests. Override fetch to opt out so every query
+// hits the database fresh.
+neonConfig.fetchFunction = (url: RequestInfo | URL, options?: RequestInit) =>
+  fetch(url, { ...options, cache: "no-store" });
 
 function getSql() {
   const url = process.env.DATABASE_URL;
