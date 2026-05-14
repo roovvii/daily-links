@@ -14,6 +14,7 @@ export type EventType =
   | "reviewed"
   | "snoozed"
   | "unsnoozed"
+  | "commented"
   | "deleted";
 
 export type EventSession = {

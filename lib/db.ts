@@ -243,6 +243,21 @@ export async function insertEvent(
   `;
 }
 
+// A comment is stored as an event with type='commented' and the text in the
+// note column, so it shows up in the per-link history feed alongside other
+// activity and counts toward Recent updates aggregation.
+export async function insertComment(
+  role: string,
+  linkId: number,
+  text: string
+): Promise<void> {
+  const sql = getSql();
+  await sql`
+    INSERT INTO events (role, type, link_id, note)
+    VALUES (${role}, 'commented', ${linkId}, ${text})
+  `;
+}
+
 export async function insertEventsBulk(
   role: string,
   type: string,
@@ -312,12 +327,13 @@ export type LinkEventRow = {
   role: string;
   type: string;
   created_at: string;
+  note: string | null;
 };
 
 export async function listEventsForLink(linkId: number): Promise<LinkEventRow[]> {
   const sql = getSql();
   const rows = (await sql`
-    SELECT role, type, created_at::text AS created_at
+    SELECT role, type, created_at::text AS created_at, note
     FROM events
     WHERE link_id = ${linkId}
     ORDER BY created_at ASC

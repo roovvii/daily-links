@@ -41,9 +41,13 @@ async function main() {
       role TEXT NOT NULL,
       type TEXT NOT NULL,
       link_id INT REFERENCES links(id) ON DELETE SET NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      note TEXT
     )
   `;
+  // Idempotent migration: tables created before the comment feature was
+  // added need the note column to be added in place.
+  await sql`ALTER TABLE events ADD COLUMN IF NOT EXISTS note TEXT`;
   await sql`CREATE INDEX IF NOT EXISTS events_role_type_created_idx ON events (role, type, created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS events_type_created_idx ON events (type, created_at)`;
   await sql`CREATE INDEX IF NOT EXISTS events_link_id_idx ON events (link_id)`;

@@ -11,6 +11,7 @@ const EVENT_VERB: Record<EventType, (count: number) => string> = {
   reviewed: (n) => `reviewed ${n} link${n === 1 ? "" : "s"}`,
   snoozed: (n) => `snoozed ${n} link${n === 1 ? "" : "s"}`,
   unsnoozed: (n) => `unsnoozed ${n} link${n === 1 ? "" : "s"}`,
+  commented: (n) => `commented on ${n} link${n === 1 ? "" : "s"}`,
   deleted: (n) => `deleted ${n} link${n === 1 ? "" : "s"}`,
 };
 
@@ -78,7 +79,10 @@ export function UpdatesCard({ role, version = 0 }: { role: Role; version?: numbe
   async function toggleOpen() {
     const next = !open;
     setOpen(next);
-    if (next && unreadCount > 0) {
+    // Mark-as-seen on close, not open. This way the "new" dots and the badge
+    // stay visible the entire time the panel is expanded, and only clear
+    // when the user collapses it again.
+    if (!next && unreadCount > 0) {
       try {
         const res = await fetch("/api/events", { method: "POST" });
         if (res.ok) {

@@ -368,6 +368,7 @@ export function LinksApp({
                       onClearReviewAndApply={clearReviewAndApply}
                       onSnooze={snoozeLink}
                       onUnsnooze={unsnoozeLink}
+                      onActivity={bumpStats}
                     />
                   ))}
                 </ul>
@@ -449,6 +450,7 @@ function LinkItem({
   onClearReviewAndApply,
   onSnooze,
   onUnsnooze,
+  onActivity,
 }: {
   link: LinkRow;
   mounted: boolean;
@@ -461,6 +463,7 @@ function LinkItem({
   onClearReviewAndApply: (id: number) => void;
   onSnooze: (id: number, untilIso: string) => void;
   onUnsnooze: (id: number) => void;
+  onActivity: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -726,7 +729,11 @@ function LinkItem({
       )}
 
       {historyOpen && (
-        <HistoryPanel linkId={link.id} onClose={() => setHistoryOpen(false)} />
+        <HistoryPanel
+          linkId={link.id}
+          onClose={() => setHistoryOpen(false)}
+          onActivity={onActivity}
+        />
       )}
 
       {snoozeOpen && (
@@ -838,7 +845,12 @@ function SnoozePanel({
   );
 }
 
-type LinkEvent = { role: string; type: string; created_at: string };
+type LinkEvent = {
+  role: string;
+  type: string;
+  created_at: string;
+  note: string | null;
+};
 
 const EVENT_DESC: Record<string, string> = {
   added: "added",
@@ -847,16 +859,42 @@ const EVENT_DESC: Record<string, string> = {
   reviewed: "marked reviewed",
   snoozed: "snoozed",
   unsnoozed: "unsnoozed",
+  commented: "commented",
   deleted: "deleted",
 };
 
-function HistoryPanel({ linkId, onClose }: { linkId: number; onClose: () => void }) {
+function HistoryPanel({
+  linkId,
+  onClose,
+  onActivity,
+}: {
+  linkId: number;
+  onClose: () => void;
+  onActivity?: () => void;
+}) {
   const [events, setEvents] = useState<LinkEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
+
+  async function load() {
+    try {
+      const res = await fetch(`/api/links/${linkId}/events`, { cache: "no-store" });
+      if (!res.ok) {
+        setError("Failed to load history");
+        return;
+      }
+      const data = await res.json();
+      setEvents((data.events as LinkEvent[]) ?? []);
+    } catch {
+      setError("Failed to load history");
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
-    async function load() {
+    (async () => {
       try {
         const res = await fetch(`/api/links/${linkId}/events`, { cache: "no-store" });
         if (!res.ok) {
@@ -868,12 +906,36 @@ function HistoryPanel({ linkId, onClose }: { linkId: number; onClose: () => void
       } catch {
         if (!cancelled) setError("Failed to load history");
       }
-    }
-    load();
+    })();
     return () => {
       cancelled = true;
     };
   }, [linkId]);
+
+  async function submitComment(e: React.FormEvent) {
+    e.preventDefault();
+    const text = commentDraft.trim();
+    if (!text || posting) return;
+    setPosting(true);
+    setPostError(null);
+    try {
+      const res = await fetch(`/api/links/${linkId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setPostError(data.error ?? "Failed to post comment");
+        return;
+      }
+      setCommentDraft("");
+      await load();
+      onActivity?.();
+    } finally {
+      setPosting(false);
+    }
+  }
 
   return (
     <div className="mt-3 rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm dark:border-neutral-800 dark:bg-neutral-950/40">
@@ -906,16 +968,43 @@ function HistoryPanel({ linkId, onClose }: { linkId: number; onClose: () => void
                   minute: "2-digit",
                 })}
               </span>
-              <span>
-                <span className="font-medium capitalize">{e.role}</span>{" "}
-                <span className="text-neutral-600 dark:text-neutral-300">
-                  {EVENT_DESC[e.type] ?? e.type}
+              <div className="min-w-0">
+                <span>
+                  <span className="font-medium capitalize">{e.role}</span>{" "}
+                  <span className="text-neutral-600 dark:text-neutral-300">
+                    {EVENT_DESC[e.type] ?? e.type}
+                  </span>
                 </span>
-              </span>
+                {e.type === "commented" && e.note && (
+                  <p className="mt-0.5 whitespace-pre-wrap rounded border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200">
+                    {e.note}
+                  </p>
+                )}
+              </div>
             </li>
           ))}
         </ol>
       )}
+
+      <form onSubmit={submitComment} className="mt-3 border-t border-neutral-200 pt-2 dark:border-neutral-800">
+        <textarea
+          value={commentDraft}
+          onChange={(ev) => setCommentDraft(ev.target.value)}
+          placeholder="Add a comment..."
+          rows={2}
+          className="w-full resize-y rounded border border-neutral-300 bg-white px-2 py-1 text-xs outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-900"
+        />
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <span className="text-[10px] text-rose-600">{postError}</span>
+          <button
+            type="submit"
+            disabled={!commentDraft.trim() || posting}
+            className="rounded bg-neutral-900 px-2 py-1 text-[11px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
+          >
+            {posting ? "Posting..." : "Comment"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
