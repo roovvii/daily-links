@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { LinkRow, LinkStatus } from "@/lib/types";
 import { STATUS_LABEL, STATUS_OPTIONS } from "@/lib/types";
 
-type Filter = "active" | "done" | "all";
+type Filter = "active" | "review" | "done" | "all";
 
 const STATUS_COLORS: Record<LinkStatus, string> = {
   todo: "bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300",
@@ -13,6 +13,13 @@ const STATUS_COLORS: Record<LinkStatus, string> = {
   interview: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
   rejected: "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300",
   offer: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+};
+
+const FILTER_LABEL: Record<Filter, string> = {
+  active: "Active",
+  review: "Needs review",
+  done: "Done",
+  all: "All",
 };
 
 function hostOf(url: string): string {
@@ -78,15 +85,18 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
   const counts = useMemo(() => {
     let active = 0;
     let done = 0;
+    let review = 0;
     for (const l of links) {
       if (l.status === "todo") active++;
       else done++;
+      if (l.needs_review) review++;
     }
-    return { active, done, total: links.length };
+    return { active, done, review, total: links.length };
   }, [links]);
 
   const visible = useMemo(() => {
     if (filter === "all") return links;
+    if (filter === "review") return links.filter((l) => l.needs_review);
     if (filter === "done") return links.filter((l) => l.status !== "todo");
     return links.filter((l) => l.status === "todo");
   }, [links, filter]);
@@ -118,6 +128,10 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
     });
   }
 
+  function replaceLink(updated: LinkRow) {
+    setLinks((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
+  }
+
   async function patchLink(id: number, body: Partial<LinkRow>) {
     const res = await fetch(`/api/links/${id}`, {
       method: "PATCH",
@@ -126,7 +140,30 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
     });
     if (!res.ok) return;
     const data = await res.json();
-    setLinks((prev) => prev.map((l) => (l.id === id ? (data.link as LinkRow) : l)));
+    replaceLink(data.link as LinkRow);
+  }
+
+  async function saveReview(id: number, note: string, images: string[]) {
+    const res = await fetch(`/api/links/${id}/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note, images }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error ?? "Failed to save review");
+      return false;
+    }
+    const data = await res.json();
+    replaceLink(data.link as LinkRow);
+    return true;
+  }
+
+  async function clearReview(id: number) {
+    const res = await fetch(`/api/links/${id}/review`, { method: "DELETE" });
+    if (!res.ok) return;
+    const data = await res.json();
+    replaceLink(data.link as LinkRow);
   }
 
   async function removeLink(id: number) {
@@ -148,7 +185,7 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
         <div>
           <h1 className="text-xl font-semibold">Daily Links</h1>
           <p className="text-sm text-neutral-500">
-            {counts.active} active, {counts.done} done, {counts.total} total
+            {counts.active} active, {counts.review} for review, {counts.done} done, {counts.total} total
           </p>
         </div>
         <button
@@ -161,8 +198,7 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
 
       {dbError && (
         <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-          Database not connected: {dbError}. Run <code>npm run db:init</code> after setting up
-          Postgres.
+          Database not connected: {dbError}.
         </div>
       )}
 
@@ -190,56 +226,63 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
       </form>
 
       <div className="mb-3 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
-        {(["active", "done", "all"] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 text-sm capitalize ${
-              filter === f
-                ? "border-b-2 border-neutral-900 font-medium dark:border-white"
-                : "text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
-            }`}
-          >
-            {f}{" "}
-            <span className="text-xs text-neutral-400">
-              ({f === "active" ? counts.active : f === "done" ? counts.done : counts.total})
-            </span>
-          </button>
-        ))}
+        {(["active", "review", "done", "all"] as const).map((f) => {
+          const count =
+            f === "active" ? counts.active : f === "review" ? counts.review : f === "done" ? counts.done : counts.total;
+          return (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`px-3 py-1.5 text-sm ${
+                filter === f
+                  ? "border-b-2 border-neutral-900 font-medium dark:border-white"
+                  : "text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
+              } ${f === "review" && count > 0 && filter !== "review" ? "text-amber-600 dark:text-amber-400" : ""}`}
+            >
+              {FILTER_LABEL[f]} <span className="text-xs text-neutral-400">({count})</span>
+            </button>
+          );
+        })}
       </div>
 
       {visible.length === 0 ? (
         <p className="py-12 text-center text-sm text-neutral-500">
-          {filter === "active" ? "No active links. Paste some above." : "Nothing here yet."}
+          {filter === "active"
+            ? "No active links. Paste some above."
+            : filter === "review"
+            ? "No links flagged for review."
+            : "Nothing here yet."}
         </p>
       ) : (
         <div className="space-y-4">
-          {(mounted
-            ? groupByDate(visible)
-            : [{ label: "", items: visible }]
-          ).map((group, idx) => (
-            <section key={group.label || `pre-${idx}`}>
-              {mounted && group.label && (
-                <h2 className="mb-1.5 px-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
-                  {group.label}
-                  <span className="ml-2 font-normal normal-case tracking-normal text-neutral-400">
-                    {group.items.length} link{group.items.length === 1 ? "" : "s"}
-                  </span>
-                </h2>
-              )}
-              <ul className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white dark:divide-neutral-800 dark:border-neutral-800 dark:bg-neutral-900">
-                {group.items.map((l) => (
-                  <LinkItem
-                    key={l.id}
-                    link={l}
-                    mounted={mounted}
-                    onPatch={patchLink}
-                    onDelete={removeLink}
-                  />
-                ))}
-              </ul>
-            </section>
-          ))}
+          {(mounted ? groupByDate(visible) : [{ label: "", items: visible }]).map(
+            (group, idx) => (
+              <section key={group.label || `pre-${idx}`}>
+                {mounted && group.label && (
+                  <h2 className="mb-1.5 px-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                    {group.label}
+                    <span className="ml-2 font-normal normal-case tracking-normal text-neutral-400">
+                      {group.items.length} link{group.items.length === 1 ? "" : "s"}
+                    </span>
+                  </h2>
+                )}
+                <ul className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white dark:divide-neutral-800 dark:border-neutral-800 dark:bg-neutral-900">
+                  {group.items.map((l) => (
+                    <LinkItem
+                      key={l.id}
+                      link={l}
+                      mounted={mounted}
+                      filterIsReview={filter === "review"}
+                      onPatch={patchLink}
+                      onDelete={removeLink}
+                      onSaveReview={saveReview}
+                      onClearReview={clearReview}
+                    />
+                  ))}
+                </ul>
+              </section>
+            )
+          )}
         </div>
       )}
     </main>
@@ -249,15 +292,22 @@ export function LinksApp({ initial, dbError }: { initial: LinkRow[]; dbError: st
 function LinkItem({
   link,
   mounted,
+  filterIsReview,
   onPatch,
   onDelete,
+  onSaveReview,
+  onClearReview,
 }: {
   link: LinkRow;
   mounted: boolean;
+  filterIsReview: boolean;
   onPatch: (id: number, body: Partial<LinkRow>) => void;
   onDelete: (id: number) => void;
+  onSaveReview: (id: number, note: string, images: string[]) => Promise<boolean>;
+  onClearReview: (id: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [company, setCompany] = useState(link.company ?? "");
   const [title, setTitle] = useState(link.title ?? "");
   const checked = link.status !== "todo";
@@ -275,123 +325,341 @@ function LinkItem({
   const displayTitle = link.title || "(no title)";
 
   return (
-    <li className="flex items-start gap-3 px-4 py-3">
-      <button
-        onClick={toggleChecked}
-        aria-label={checked ? "Mark as todo" : "Mark as applied"}
-        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
-          checked
-            ? "border-emerald-600 bg-emerald-600 text-white"
-            : "border-neutral-400 bg-white dark:bg-neutral-950"
-        }`}
-      >
-        {checked && (
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5}>
-            <path d="M3 8.5l3.2 3.2L13 5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
-      </button>
+    <li className={`px-4 py-3 ${link.needs_review ? "bg-amber-50/40 dark:bg-amber-950/20" : ""}`}>
+      <div className="flex items-start gap-3">
+        <button
+          onClick={toggleChecked}
+          aria-label={checked ? "Mark as todo" : "Mark as applied"}
+          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
+            checked
+              ? "border-emerald-600 bg-emerald-600 text-white"
+              : "border-neutral-400 bg-white dark:bg-neutral-950"
+          }`}
+        >
+          {checked && (
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5}>
+              <path d="M3 8.5l3.2 3.2L13 5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </button>
 
-      <div className="min-w-0 flex-1">
-        {editing ? (
-          <div className="space-y-1.5">
-            <input
-              value={company}
-              onChange={(e) => setCompany(e.target.value)}
-              placeholder="Company"
-              className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
-            />
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Title"
-              className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={saveEdits}
-                className="rounded bg-neutral-900 px-2 py-1 text-xs text-white dark:bg-white dark:text-neutral-900"
-              >
-                Save
-              </button>
-              <button
-                onClick={() => setEditing(false)}
-                className="rounded px-2 py-1 text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
-              >
-                Cancel
-              </button>
+        <div className="min-w-0 flex-1">
+          {editing ? (
+            <div className="space-y-1.5">
+              <input
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
+                placeholder="Company"
+                className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              />
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Title"
+                className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={saveEdits}
+                  className="rounded bg-neutral-900 px-2 py-1 text-xs text-white dark:bg-white dark:text-neutral-900"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => setEditing(false)}
+                  className="rounded px-2 py-1 text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="space-y-0.5">
-            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <a
-                href={link.url}
-                target="_blank"
-                rel="noreferrer"
-                className={`text-sm font-medium hover:underline ${
-                  checked ? "text-neutral-400 line-through" : ""
-                }`}
-              >
-                {displayCompany}
-              </a>
-              <span className={`text-sm ${checked ? "text-neutral-400 line-through" : "text-neutral-600 dark:text-neutral-300"}`}>
-                {displayTitle}
-              </span>
+          ) : (
+            <div className="space-y-0.5">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`text-sm font-medium hover:underline ${
+                    checked ? "text-neutral-400 line-through" : ""
+                  }`}
+                >
+                  {displayCompany}
+                </a>
+                <span
+                  className={`text-sm ${
+                    checked
+                      ? "text-neutral-400 line-through"
+                      : "text-neutral-600 dark:text-neutral-300"
+                  }`}
+                >
+                  {displayTitle}
+                </span>
+                {link.needs_review && (
+                  <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-900 dark:bg-amber-900 dark:text-amber-100">
+                    Review
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+                {link.source && <span>{link.source}</span>}
+                {link.source && <span>·</span>}
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="truncate hover:underline"
+                  title={link.url}
+                >
+                  {hostOf(link.url)}
+                </a>
+                {mounted && (
+                  <>
+                    <span>·</span>
+                    <time
+                      dateTime={link.created_at}
+                      title={new Date(link.created_at).toLocaleString()}
+                    >
+                      {formatTime(link.created_at)}
+                    </time>
+                  </>
+                )}
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
-              {link.source && <span>{link.source}</span>}
-              {link.source && <span>·</span>}
-              <a
-                href={link.url}
-                target="_blank"
-                rel="noreferrer"
-                className="truncate hover:underline"
-                title={link.url}
-              >
-                {hostOf(link.url)}
-              </a>
-              {mounted && (
-                <>
-                  <span>·</span>
-                  <time
-                    dateTime={link.created_at}
-                    title={new Date(link.created_at).toLocaleString()}
-                  >
-                    {formatTime(link.created_at)}
-                  </time>
-                </>
-              )}
-            </div>
-          </div>
-        )}
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <select
+            value={link.status}
+            onChange={(e) => onPatch(link.id, { status: e.target.value as LinkStatus })}
+            className={`rounded-full px-2 py-0.5 text-xs ${STATUS_COLORS[link.status]} border-0 outline-none`}
+          >
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABEL[s]}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => setReviewOpen((v) => !v)}
+            className={`text-xs ${
+              link.needs_review
+                ? "text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200"
+                : "text-neutral-400 hover:text-amber-700"
+            }`}
+            title={link.needs_review ? "View review request" : "Flag for review"}
+          >
+            {link.needs_review ? "Review" : "Flag"}
+          </button>
+          <button
+            onClick={() => setEditing((v) => !v)}
+            className="text-xs text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => onDelete(link.id)}
+            className="text-xs text-neutral-400 hover:text-rose-600"
+          >
+            Delete
+          </button>
+        </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
-        <select
-          value={link.status}
-          onChange={(e) => onPatch(link.id, { status: e.target.value as LinkStatus })}
-          className={`rounded-full px-2 py-0.5 text-xs ${STATUS_COLORS[link.status]} border-0 outline-none`}
-        >
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {STATUS_LABEL[s]}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={() => setEditing((v) => !v)}
-          className="text-xs text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-        >
-          Edit
-        </button>
-        <button
-          onClick={() => onDelete(link.id)}
-          className="text-xs text-neutral-400 hover:text-rose-600"
-        >
-          Delete
-        </button>
-      </div>
+      {(reviewOpen || (filterIsReview && link.needs_review)) && (
+        <ReviewPanel
+          link={link}
+          onSave={onSaveReview}
+          onClear={() => {
+            onClearReview(link.id);
+            setReviewOpen(false);
+          }}
+          onClose={() => setReviewOpen(false)}
+        />
+      )}
     </li>
+  );
+}
+
+function ReviewPanel({
+  link,
+  onSave,
+  onClear,
+  onClose,
+}: {
+  link: LinkRow;
+  onSave: (id: number, note: string, images: string[]) => Promise<boolean>;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  const [note, setNote] = useState(link.review_note ?? "");
+  const [images, setImages] = useState<string[]>(link.review_images ?? []);
+  const [uploading, setUploading] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function uploadFiles(files: File[]) {
+    const valid = files.filter((f) => f.type.startsWith("image/"));
+    if (valid.length === 0) return;
+    setError(null);
+    setUploading((n) => n + valid.length);
+    const urls: string[] = [];
+    for (const file of valid) {
+      const form = new FormData();
+      form.append("file", file);
+      try {
+        const res = await fetch("/api/upload", { method: "POST", body: form });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data.error ?? "Upload failed");
+        } else if (typeof data.url === "string") {
+          urls.push(data.url);
+        }
+      } catch {
+        setError("Upload failed");
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    }
+    if (urls.length) setImages((prev) => [...prev, ...urls]);
+  }
+
+  function onPaste(e: React.ClipboardEvent) {
+    const items = e.clipboardData.items;
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "file") {
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length) {
+      e.preventDefault();
+      uploadFiles(files);
+    }
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length) uploadFiles(files);
+  }
+
+  async function handleSave() {
+    if (!note.trim() && images.length === 0) {
+      setError("Add a note or at least one image.");
+      return;
+    }
+    setSaving(true);
+    const ok = await onSave(link.id, note, images);
+    setSaving(false);
+    if (ok) onClose();
+  }
+
+  return (
+    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        onPaste={onPaste}
+        placeholder="What do you need reviewed? You can also paste screenshots here (Ctrl+V)."
+        rows={3}
+        className="w-full resize-y rounded-md border border-amber-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-amber-500 dark:border-amber-800 dark:bg-neutral-900"
+      />
+
+      <div
+        onDrop={onDrop}
+        onDragOver={(e) => e.preventDefault()}
+        className="mt-2 rounded-md border border-dashed border-amber-300 bg-white/60 p-2 text-xs text-neutral-600 dark:border-amber-800 dark:bg-neutral-900/40 dark:text-neutral-300"
+      >
+        <div className="flex items-center justify-between">
+          <span>Drop screenshots here, paste with Ctrl+V, or</span>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="rounded bg-white px-2 py-0.5 text-xs text-neutral-900 hover:bg-neutral-100 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+          >
+            Choose file
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              if (files.length) uploadFiles(files);
+              e.target.value = "";
+            }}
+          />
+        </div>
+
+        {(images.length > 0 || uploading > 0) && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {images.map((url, i) => (
+              <div key={url + i} className="group relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <a href={url} target="_blank" rel="noreferrer">
+                  <img
+                    src={url}
+                    alt=""
+                    className="h-16 w-16 rounded border border-neutral-300 object-cover dark:border-neutral-700"
+                  />
+                </a>
+                <button
+                  onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
+                  className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-neutral-900 text-xs text-white group-hover:flex"
+                  aria-label="Remove image"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {Array.from({ length: uploading }).map((_, i) => (
+              <div
+                key={`up-${i}`}
+                className="flex h-16 w-16 items-center justify-center rounded border border-dashed border-neutral-300 text-[10px] text-neutral-500 dark:border-neutral-700"
+              >
+                uploading...
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          onClick={handleSave}
+          disabled={saving || uploading > 0}
+          className="rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-60"
+        >
+          {saving ? "Saving..." : link.needs_review ? "Update review" : "Flag for review"}
+        </button>
+        {link.needs_review && (
+          <button
+            onClick={onClear}
+            className="rounded-md border border-emerald-600 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+          >
+            Mark reviewed
+          </button>
+        )}
+        <button
+          onClick={onClose}
+          className="rounded-md px-3 py-1 text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
+        >
+          Close
+        </button>
+        {link.review_flagged_at && (
+          <span className="ml-auto text-[10px] text-neutral-500">
+            flagged {new Date(link.review_flagged_at).toLocaleString()}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }

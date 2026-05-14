@@ -11,7 +11,8 @@ export async function listLinks(): Promise<LinkRow[]> {
   const sql = getSql();
   const rows = (await sql`
     SELECT id, url, company, title, source, status, notes,
-           created_at, updated_at, completed_at
+           created_at, updated_at, completed_at,
+           needs_review, review_note, review_images, review_flagged_at
     FROM links
     ORDER BY
       CASE status WHEN 'todo' THEN 0 ELSE 1 END,
@@ -32,7 +33,8 @@ export async function createLink(input: {
     VALUES (${input.url}, ${input.company}, ${input.title}, ${input.source}, 'todo')
     ON CONFLICT (url) DO NOTHING
     RETURNING id, url, company, title, source, status, notes,
-              created_at, updated_at, completed_at
+              created_at, updated_at, completed_at,
+              needs_review, review_note, review_images, review_flagged_at
   `) as unknown as LinkRow[];
   return rows[0] ?? null;
 }
@@ -59,7 +61,48 @@ export async function updateLink(
       updated_at = NOW()
     WHERE id = ${id}
     RETURNING id, url, company, title, source, status, notes,
-              created_at, updated_at, completed_at
+              created_at, updated_at, completed_at,
+              needs_review, review_note, review_images, review_flagged_at
+  `) as unknown as LinkRow[];
+  return rows[0] ?? null;
+}
+
+export async function setReview(
+  id: number,
+  note: string,
+  images: string[]
+): Promise<LinkRow | null> {
+  const sql = getSql();
+  const rows = (await sql`
+    UPDATE links
+    SET
+      needs_review = TRUE,
+      review_note = ${note},
+      review_images = ${JSON.stringify(images)}::jsonb,
+      review_flagged_at = NOW(),
+      updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING id, url, company, title, source, status, notes,
+              created_at, updated_at, completed_at,
+              needs_review, review_note, review_images, review_flagged_at
+  `) as unknown as LinkRow[];
+  return rows[0] ?? null;
+}
+
+export async function clearReview(id: number): Promise<LinkRow | null> {
+  const sql = getSql();
+  const rows = (await sql`
+    UPDATE links
+    SET
+      needs_review = FALSE,
+      review_note = NULL,
+      review_images = NULL,
+      review_flagged_at = NULL,
+      updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING id, url, company, title, source, status, notes,
+              created_at, updated_at, completed_at,
+              needs_review, review_note, review_images, review_flagged_at
   `) as unknown as LinkRow[];
   return rows[0] ?? null;
 }

@@ -21,4 +21,8 @@ export type LinkRow = {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  needs_review: boolean;
+  review_note: string | null;
+  review_images: string[] | null;
+  review_flagged_at: string | null;
 };
