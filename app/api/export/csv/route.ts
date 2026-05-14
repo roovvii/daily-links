@@ -1,3 +1,5 @@
+import { NextResponse } from "next/server";
+import { getRoleFromRequest } from "@/lib/auth";
 import { listLinks } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -12,7 +14,11 @@ function csvCell(value: unknown): string {
   return s;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const role = await getRoleFromRequest(req);
+  if (role !== "ravi") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
   const rows = await listLinks();
   const headers = [
     "id",

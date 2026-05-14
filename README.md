@@ -17,9 +17,14 @@ checklist with a status chip per item. Protected by a single shared password.
 - Bulk-paste URLs in a textarea. The server fetches each URL, parses OG/twitter
   meta tags plus hostname-specific patterns (Greenhouse, Lever, Ashby, Workday,
   SmartRecruiters, LinkedIn, Indeed, etc.) to extract company and title.
-- Each row has a checkmark plus a status dropdown (To do, Applied, Interview,
-  Rejected, Offer). Inline edit lets you fix the parsed company/title.
+- Each row has a single checkbox: unchecked = active (to do), checked =
+  applied (done). Inline edit lets you fix the parsed company/title.
 - Duplicate URLs are skipped on add.
+- Two roles: `ravi` (admin) and `sreeya` (applier). Each role has its own
+  password. The right-sidebar 'Applied today' tile counts applies in each
+  role's own timezone (Ravi = America/Chicago, Sreeya = Asia/Kolkata),
+  independent of who is viewing. The daily trend chart is bucketed the
+  same way.
 
 ## Local development
 

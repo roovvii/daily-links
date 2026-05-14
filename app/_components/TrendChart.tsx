@@ -47,16 +47,47 @@ const PAD_X = 16;
 const PAD_TOP = 10;
 const PAD_BOTTOM = 22;
 
+// Pick the rightmost X-axis date so that both roles' "today" always fits on
+// the chart. Sreeya is in IST (UTC+5:30) which is always ahead of Ravi in
+// Chicago, so Kolkata's current calendar date is the latest possible today
+// across the two roles.
+function latestRoleToday(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date()); // "YYYY-MM-DD"
+}
+
+function addDaysIso(iso: string, delta: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + delta);
+  return dt.toISOString().slice(0, 10);
+}
+
 function buildDayList(n: number): string[] {
+  const today = latestRoleToday();
   const out: string[] = [];
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
   for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setUTCDate(today.getUTCDate() - i);
-    out.push(d.toISOString().slice(0, 10));
+    out.push(addDaysIso(today, -i));
   }
   return out;
+}
+
+// Format a YYYY-MM-DD string as a short calendar label without timezone shifts.
+function formatDayShort(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatDayFull(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString();
 }
 
 export function TrendChart({ version = 0 }: { version?: number }) {
@@ -189,10 +220,7 @@ export function TrendChart({ version = 0 }: { version?: number }) {
                 className="fill-neutral-500"
                 style={{ fontSize: 9 }}
               >
-                {new Date(dayList[i]).toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                })}
+                {formatDayShort(dayList[i])}
               </text>
             ))}
 
@@ -220,7 +248,7 @@ export function TrendChart({ version = 0 }: { version?: number }) {
                       r={i === todayIdx ? todayDotRadius : dotRadius}
                       fill={color}
                     >
-                      <title>{`${ROLE_COLORS[role]?.label ?? role}: ${v} applies on ${new Date(dayList[i]).toLocaleDateString()}`}</title>
+                      <title>{`${ROLE_COLORS[role]?.label ?? role}: ${v} applies on ${formatDayFull(dayList[i])}`}</title>
                     </circle>
                   ))}
                 </g>

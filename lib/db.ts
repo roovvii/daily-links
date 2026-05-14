@@ -174,13 +174,28 @@ export async function getTodayApplyCounts(): Promise<TodayCount[]> {
 
 export async function listDailyApplies(days = 14): Promise<DailyApplyRow[]> {
   const sql = getSql();
+  // Bucket each role's events by that role's own local calendar date so the
+  // chart agrees with the per-role 'Applied today' tile. The WHERE filter is
+  // still UTC-based and intentionally loose (it just bounds the scan).
   const rows = (await sql`
     SELECT role,
-           to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+           to_char(
+             date_trunc(
+               'day',
+               created_at AT TIME ZONE (
+                 CASE role
+                   WHEN 'ravi' THEN 'America/Chicago'
+                   WHEN 'sreeya' THEN 'Asia/Kolkata'
+                   ELSE 'UTC'
+                 END
+               )
+             ),
+             'YYYY-MM-DD'
+           ) AS day,
            COUNT(*)::int AS count
     FROM events
     WHERE type = 'applied'
-      AND created_at >= NOW() - (${days} || ' days')::interval
+      AND created_at >= NOW() - ((${days} + 1) || ' days')::interval
     GROUP BY role, day
     ORDER BY day ASC, role ASC
   `) as unknown as DailyApplyRow[];
