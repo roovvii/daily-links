@@ -469,6 +469,7 @@ function LinkItem({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
+  const [commentOpen, setCommentOpen] = useState(false);
   const [panelHiddenInReview, setPanelHiddenInReview] = useState(false);
   const [company, setCompany] = useState(link.company ?? "");
   const [title, setTitle] = useState(link.title ?? "");
@@ -695,6 +696,13 @@ function LinkItem({
             History
           </button>
           <button
+            onClick={() => setCommentOpen((v) => !v)}
+            className="text-xs text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+            title="Add a comment"
+          >
+            Comment
+          </button>
+          <button
             onClick={() => setEditing((v) => !v)}
             className="text-xs text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
           >
@@ -729,11 +737,7 @@ function LinkItem({
       )}
 
       {historyOpen && (
-        <HistoryPanel
-          linkId={link.id}
-          onClose={() => setHistoryOpen(false)}
-          onActivity={onActivity}
-        />
+        <HistoryPanel linkId={link.id} onClose={() => setHistoryOpen(false)} />
       )}
 
       {snoozeOpen && (
@@ -750,7 +754,92 @@ function LinkItem({
           onClose={() => setSnoozeOpen(false)}
         />
       )}
+
+      {commentOpen && (
+        <CommentPanel
+          linkId={link.id}
+          onPosted={onActivity}
+          onClose={() => setCommentOpen(false)}
+        />
+      )}
     </li>
+  );
+}
+
+function CommentPanel({
+  linkId,
+  onPosted,
+  onClose,
+}: {
+  linkId: number;
+  onPosted: () => void;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState("");
+  const [posting, setPosting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const value = text.trim();
+    if (!value || posting) return;
+    setPosting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/links/${linkId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: value }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Failed to post comment");
+        return;
+      }
+      setText("");
+      onPosted();
+      onClose();
+    } finally {
+      setPosting(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="mt-3 rounded-md border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40"
+    >
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+          Add comment
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
+        >
+          Close
+        </button>
+      </div>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Write a comment. It will appear in this link's history."
+        rows={3}
+        autoFocus
+        className="w-full resize-y rounded border border-neutral-300 bg-white px-2 py-1 text-sm outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-900"
+      />
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="text-[11px] text-rose-600">{error}</span>
+        <button
+          type="submit"
+          disabled={!text.trim() || posting}
+          className="rounded-md bg-neutral-900 px-3 py-1 text-xs font-medium text-white hover:bg-neutral-800 disabled:opacity-60 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
+        >
+          {posting ? "Posting..." : "Comment"}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -863,34 +952,9 @@ const EVENT_DESC: Record<string, string> = {
   deleted: "deleted",
 };
 
-function HistoryPanel({
-  linkId,
-  onClose,
-  onActivity,
-}: {
-  linkId: number;
-  onClose: () => void;
-  onActivity?: () => void;
-}) {
+function HistoryPanel({ linkId, onClose }: { linkId: number; onClose: () => void }) {
   const [events, setEvents] = useState<LinkEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [commentDraft, setCommentDraft] = useState("");
-  const [posting, setPosting] = useState(false);
-  const [postError, setPostError] = useState<string | null>(null);
-
-  async function load() {
-    try {
-      const res = await fetch(`/api/links/${linkId}/events`, { cache: "no-store" });
-      if (!res.ok) {
-        setError("Failed to load history");
-        return;
-      }
-      const data = await res.json();
-      setEvents((data.events as LinkEvent[]) ?? []);
-    } catch {
-      setError("Failed to load history");
-    }
-  }
 
   useEffect(() => {
     let cancelled = false;
@@ -911,31 +975,6 @@ function HistoryPanel({
       cancelled = true;
     };
   }, [linkId]);
-
-  async function submitComment(e: React.FormEvent) {
-    e.preventDefault();
-    const text = commentDraft.trim();
-    if (!text || posting) return;
-    setPosting(true);
-    setPostError(null);
-    try {
-      const res = await fetch(`/api/links/${linkId}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setPostError(data.error ?? "Failed to post comment");
-        return;
-      }
-      setCommentDraft("");
-      await load();
-      onActivity?.();
-    } finally {
-      setPosting(false);
-    }
-  }
 
   return (
     <div className="mt-3 rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm dark:border-neutral-800 dark:bg-neutral-950/40">
@@ -985,26 +1024,6 @@ function HistoryPanel({
           ))}
         </ol>
       )}
-
-      <form onSubmit={submitComment} className="mt-3 border-t border-neutral-200 pt-2 dark:border-neutral-800">
-        <textarea
-          value={commentDraft}
-          onChange={(ev) => setCommentDraft(ev.target.value)}
-          placeholder="Add a comment..."
-          rows={2}
-          className="w-full resize-y rounded border border-neutral-300 bg-white px-2 py-1 text-xs outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-900"
-        />
-        <div className="mt-1.5 flex items-center justify-between gap-2">
-          <span className="text-[10px] text-rose-600">{postError}</span>
-          <button
-            type="submit"
-            disabled={!commentDraft.trim() || posting}
-            className="rounded bg-neutral-900 px-2 py-1 text-[11px] font-medium text-white hover:bg-neutral-800 disabled:opacity-60 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
-          >
-            {posting ? "Posting..." : "Comment"}
-          </button>
-        </div>
-      </form>
     </div>
   );
 }
