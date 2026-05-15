@@ -58,6 +58,23 @@ function formatTime(iso: string): string {
   });
 }
 
+// Same-calendar-day links show a relative age ('2h ago', '3m ago') so
+// freshness is obvious at a glance. Older links fall back to clock time;
+// the date group header ('Yesterday', 'Mon Mar 3') already supplies the
+// day context, so the clock time is enough there.
+function timeAgoOrClock(iso: string, nowMs: number): string {
+  const created = new Date(iso);
+  const now = new Date(nowMs);
+  if (!sameDay(created, now)) return formatTime(iso);
+  const ms = Math.max(0, nowMs - created.getTime());
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return "just now";
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.round(min / 60);
+  return `${hr}h ago`;
+}
+
 function groupByDate(rows: LinkRow[]): { label: string; items: LinkRow[] }[] {
   const groups: { label: string; items: LinkRow[] }[] = [];
   for (const row of rows) {
@@ -359,6 +376,7 @@ export function LinksApp({
                       key={l.id}
                       link={l}
                       mounted={mounted}
+                      now={now}
                       filterIsReview={filter === "review"}
                       isAdmin={isAdmin}
                       onPatch={patchLink}
@@ -441,6 +459,7 @@ function StatTile({
 function LinkItem({
   link,
   mounted,
+  now,
   filterIsReview,
   isAdmin,
   onPatch,
@@ -454,6 +473,7 @@ function LinkItem({
 }: {
   link: LinkRow;
   mounted: boolean;
+  now: number;
   filterIsReview: boolean;
   isAdmin: boolean;
   onPatch: (id: number, body: Partial<LinkRow>) => void;
@@ -606,7 +626,7 @@ function LinkItem({
                       dateTime={link.created_at}
                       title={new Date(link.created_at).toLocaleString()}
                     >
-                      {formatTime(link.created_at)}
+                      {timeAgoOrClock(link.created_at, now)}
                     </time>
                   </>
                 )}
