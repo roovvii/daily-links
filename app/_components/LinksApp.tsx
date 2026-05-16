@@ -517,11 +517,14 @@ function LinkItem({
     ? link.needs_review && !panelHiddenInReview
     : reviewOpen;
 
-  function toggleChecked() {
-    // Dropped is its own terminal state; the only way out is the Undrop
-    // button. Clicking the checkbox here would be ambiguous.
-    if (isDropped) return;
-    onPatch(link.id, { status: isApplied ? "todo" : "applied" });
+  function setStatusViaSegment(target: "applied" | "dropped") {
+    // Clicking the currently-active segment reverts to todo. Clicking the
+    // other segment switches the link to that terminal state.
+    if (link.status === target) {
+      onPatch(link.id, { status: "todo" });
+    } else {
+      onPatch(link.id, { status: target });
+    }
   }
 
   function saveEdits() {
@@ -539,36 +542,6 @@ function LinkItem({
   return (
     <li className={`px-4 py-3 ${link.needs_review ? "bg-amber-50/40 dark:bg-amber-950/20" : ""}`}>
       <div className="flex items-start gap-3">
-        <button
-          onClick={toggleChecked}
-          disabled={isDropped}
-          aria-label={
-            isDropped
-              ? "Dropped — use Undrop to restore"
-              : isApplied
-              ? "Mark as todo"
-              : "Mark as applied"
-          }
-          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
-            isApplied
-              ? "border-emerald-600 bg-emerald-600 text-white"
-              : isDropped
-              ? "cursor-not-allowed border-rose-300 bg-rose-50 text-rose-400 dark:border-rose-900/60 dark:bg-rose-950/40"
-              : "border-neutral-400 bg-white dark:bg-neutral-950"
-          }`}
-        >
-          {isApplied && (
-            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5}>
-              <path d="M3 8.5l3.2 3.2L13 5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          )}
-          {isDropped && (
-            <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2.5}>
-              <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
-            </svg>
-          )}
-        </button>
-
         <div className="min-w-0 flex-1">
           {editing ? (
             <div className="space-y-1.5">
@@ -760,25 +733,6 @@ function LinkItem({
             Comment
           </button>
           <button
-            onClick={() =>
-              onPatch(link.id, {
-                status: link.status === "dropped" ? "todo" : "dropped",
-              })
-            }
-            className={`text-xs ${
-              link.status === "dropped"
-                ? "text-rose-600 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-200"
-                : "text-neutral-400 hover:text-rose-600"
-            }`}
-            title={
-              link.status === "dropped"
-                ? "Restore this link to active"
-                : "Mark this link as dropped (gave up on applying)"
-            }
-          >
-            {link.status === "dropped" ? "Undrop" : "Drop"}
-          </button>
-          <button
             onClick={() => setEditing((v) => !v)}
             className="text-xs text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
           >
@@ -792,6 +746,42 @@ function LinkItem({
               Delete
             </button>
           )}
+
+          {/* Primary outcome selector. Bigger than the surrounding text
+              buttons so the most common action is the easiest target.
+              Currently-active segment is filled in its color; clicking it
+              again reverts to todo. Clicking the inactive segment switches
+              between Applied and Dropped directly. */}
+          <div
+            role="group"
+            aria-label="Mark link as done or dropped"
+            className="ml-1 flex shrink-0 overflow-hidden rounded-md border border-neutral-300 dark:border-neutral-700"
+          >
+            <button
+              onClick={() => setStatusViaSegment("applied")}
+              aria-pressed={isApplied}
+              title={isApplied ? "Click to revert to active" : "Mark as done"}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                isApplied
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                  : "bg-white text-emerald-700 hover:bg-emerald-50 dark:bg-neutral-900 dark:text-emerald-400 dark:hover:bg-emerald-950/60"
+              }`}
+            >
+              Done
+            </button>
+            <button
+              onClick={() => setStatusViaSegment("dropped")}
+              aria-pressed={isDropped}
+              title={isDropped ? "Click to revert to active" : "Mark as dropped"}
+              className={`border-l border-neutral-300 px-3 py-1.5 text-xs font-medium transition-colors dark:border-neutral-700 ${
+                isDropped
+                  ? "bg-rose-600 text-white hover:bg-rose-700"
+                  : "bg-white text-rose-700 hover:bg-rose-50 dark:bg-neutral-900 dark:text-rose-400 dark:hover:bg-rose-950/60"
+              }`}
+            >
+              Drop
+            </button>
+          </div>
         </div>
       </div>
 
