@@ -507,9 +507,9 @@ function LinkItem({
   const [notes, setNotes] = useState(link.notes ?? "");
   const isApplied = link.status === "applied";
   const isDropped = link.status === "dropped";
-  // Strike-through styling applies to any terminal state (applied or
-  // dropped). Both are "no longer active" outcomes.
-  const checked = link.status !== "todo";
+  // Only dropped links render with strike-through. Applied links keep
+  // normal-weight text since the filled Done segment + the Done tab
+  // already convey "resolved" without dimming the row.
   const snoozed =
     !!link.snoozed_until && new Date(link.snoozed_until).getTime() > Date.now();
 
@@ -627,14 +627,14 @@ function LinkItem({
                   target="_blank"
                   rel="noreferrer"
                   className={`text-sm font-medium hover:underline ${
-                    checked ? "text-neutral-400 line-through" : ""
+                    isDropped ? "text-neutral-400 line-through" : ""
                   }`}
                 >
                   {displayCompany}
                 </a>
                 <span
                   className={`text-sm ${
-                    checked
+                    isDropped
                       ? "text-neutral-400 line-through"
                       : "text-neutral-600 dark:text-neutral-300"
                   }`}
