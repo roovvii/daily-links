@@ -542,6 +542,41 @@ function LinkItem({
   return (
     <li className={`px-4 py-3 ${link.needs_review ? "bg-amber-50/40 dark:bg-amber-950/20" : ""}`}>
       <div className="flex items-start gap-3">
+        {/* Primary outcome selector sits at the front of the row where the
+            checkbox used to be. Currently-active segment is filled in its
+            color; clicking it again reverts to todo. Clicking the inactive
+            segment switches between Applied and Dropped directly. */}
+        <div
+          role="group"
+          aria-label="Mark link as done or dropped"
+          className="mt-0.5 flex shrink-0 overflow-hidden rounded-md border border-neutral-300 dark:border-neutral-700"
+        >
+          <button
+            onClick={() => setStatusViaSegment("applied")}
+            aria-pressed={isApplied}
+            title={isApplied ? "Click to revert to active" : "Mark as done"}
+            className={`px-3 py-1 text-xs font-medium transition-colors ${
+              isApplied
+                ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                : "bg-white text-emerald-700 hover:bg-emerald-50 dark:bg-neutral-900 dark:text-emerald-400 dark:hover:bg-emerald-950/60"
+            }`}
+          >
+            Done
+          </button>
+          <button
+            onClick={() => setStatusViaSegment("dropped")}
+            aria-pressed={isDropped}
+            title={isDropped ? "Click to revert to active" : "Mark as dropped"}
+            className={`border-l border-neutral-300 px-3 py-1 text-xs font-medium transition-colors dark:border-neutral-700 ${
+              isDropped
+                ? "bg-rose-600 text-white hover:bg-rose-700"
+                : "bg-white text-rose-700 hover:bg-rose-50 dark:bg-neutral-900 dark:text-rose-400 dark:hover:bg-rose-950/60"
+            }`}
+          >
+            Drop
+          </button>
+        </div>
+
         <div className="min-w-0 flex-1">
           {editing ? (
             <div className="space-y-1.5">
@@ -746,42 +781,6 @@ function LinkItem({
               Delete
             </button>
           )}
-
-          {/* Primary outcome selector. Bigger than the surrounding text
-              buttons so the most common action is the easiest target.
-              Currently-active segment is filled in its color; clicking it
-              again reverts to todo. Clicking the inactive segment switches
-              between Applied and Dropped directly. */}
-          <div
-            role="group"
-            aria-label="Mark link as done or dropped"
-            className="ml-1 flex shrink-0 overflow-hidden rounded-md border border-neutral-300 dark:border-neutral-700"
-          >
-            <button
-              onClick={() => setStatusViaSegment("applied")}
-              aria-pressed={isApplied}
-              title={isApplied ? "Click to revert to active" : "Mark as done"}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                isApplied
-                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                  : "bg-white text-emerald-700 hover:bg-emerald-50 dark:bg-neutral-900 dark:text-emerald-400 dark:hover:bg-emerald-950/60"
-              }`}
-            >
-              Done
-            </button>
-            <button
-              onClick={() => setStatusViaSegment("dropped")}
-              aria-pressed={isDropped}
-              title={isDropped ? "Click to revert to active" : "Mark as dropped"}
-              className={`border-l border-neutral-300 px-3 py-1.5 text-xs font-medium transition-colors dark:border-neutral-700 ${
-                isDropped
-                  ? "bg-rose-600 text-white hover:bg-rose-700"
-                  : "bg-white text-rose-700 hover:bg-rose-50 dark:bg-neutral-900 dark:text-rose-400 dark:hover:bg-rose-950/60"
-              }`}
-            >
-              Drop
-            </button>
-          </div>
         </div>
       </div>
 
