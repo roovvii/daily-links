@@ -507,9 +507,9 @@ function LinkItem({
   const [notes, setNotes] = useState(link.notes ?? "");
   const isApplied = link.status === "applied";
   const isDropped = link.status === "dropped";
-  // Only dropped links render with strike-through. Applied links keep
-  // normal-weight text since the filled Done segment + the Done tab
-  // already convey "resolved" without dimming the row.
+  // Resolved states (applied / dropped) keep normal text. The filled
+  // pill segment, the tab the row is in, and the Dropped badge already
+  // convey the state without dimming the title.
   const snoozed =
     !!link.snoozed_until && new Date(link.snoozed_until).getTime() > Date.now();
 
@@ -626,19 +626,11 @@ function LinkItem({
                   href={link.url}
                   target="_blank"
                   rel="noreferrer"
-                  className={`text-sm font-medium hover:underline ${
-                    isDropped ? "text-neutral-400 line-through" : ""
-                  }`}
+                  className="text-sm font-medium hover:underline"
                 >
                   {displayCompany}
                 </a>
-                <span
-                  className={`text-sm ${
-                    isDropped
-                      ? "text-neutral-400 line-through"
-                      : "text-neutral-600 dark:text-neutral-300"
-                  }`}
-                >
+                <span className="text-sm text-neutral-600 dark:text-neutral-300">
                   {displayTitle}
                 </span>
                 {link.needs_review && (
