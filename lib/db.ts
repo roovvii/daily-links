@@ -52,7 +52,10 @@ export async function updateLink(
 ): Promise<LinkRow | null> {
   const sql = getSql();
   const status = patch.status ?? null;
-  const completedAt = patch.status && patch.status !== "todo" ? new Date().toISOString() : null;
+  // completed_at means "when the application was submitted", so it only
+  // gets set when status transitions to 'applied'. Both 'todo' and
+  // 'dropped' clear it (dropped means the user gave up on submitting).
+  const completedAt = patch.status === "applied" ? new Date().toISOString() : null;
   const rows = (await sql`
     UPDATE links
     SET
@@ -62,8 +65,8 @@ export async function updateLink(
       title = COALESCE(${patch.title ?? null}, title),
       completed_at = CASE
         WHEN ${status}::text IS NULL THEN completed_at
-        WHEN ${status}::text = 'todo' THEN NULL
-        ELSE ${completedAt}::timestamptz
+        WHEN ${status}::text = 'applied' THEN ${completedAt}::timestamptz
+        ELSE NULL
       END,
       updated_at = NOW()
     WHERE id = ${id}

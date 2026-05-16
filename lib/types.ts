@@ -1,10 +1,11 @@
-export type LinkStatus = "todo" | "applied";
+export type LinkStatus = "todo" | "applied" | "dropped";
 
-export const STATUS_OPTIONS: LinkStatus[] = ["todo", "applied"];
+export const STATUS_OPTIONS: LinkStatus[] = ["todo", "applied", "dropped"];
 
 export const STATUS_LABEL: Record<LinkStatus, string> = {
   todo: "To do",
   applied: "Applied",
+  dropped: "Dropped",
 };
 
 export type EventType =
@@ -15,6 +16,7 @@ export type EventType =
   | "snoozed"
   | "unsnoozed"
   | "commented"
+  | "dropped"
   | "deleted";
 
 export type EventSession = {

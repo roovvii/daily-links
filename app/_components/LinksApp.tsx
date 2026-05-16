@@ -10,12 +10,13 @@ import { UpdatesCard } from "./UpdatesPanel";
 import { TrendChart } from "./TrendChart";
 import { TodayStats } from "./TodayStats";
 
-type Filter = "active" | "review" | "done" | "all";
+type Filter = "active" | "review" | "done" | "dropped" | "all";
 
 const FILTER_LABEL: Record<Filter, string> = {
   active: "Active",
   review: "Needs review",
   done: "Done",
+  dropped: "Dropped",
   all: "All",
 };
 
@@ -124,12 +125,14 @@ export function LinksApp({
     let active = 0;
     let done = 0;
     let review = 0;
+    let dropped = 0;
     for (const l of links) {
       if (l.needs_review) review++;
       else if (l.status === "todo" && !isSnoozed(l)) active++;
-      else if (l.status !== "todo") done++;
+      else if (l.status === "applied") done++;
+      else if (l.status === "dropped") dropped++;
     }
-    return { active, done, review, total: links.length };
+    return { active, done, review, dropped, total: links.length };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [links, now]);
 
@@ -140,7 +143,9 @@ export function LinksApp({
     if (filter === "all") filtered = links;
     else if (filter === "review") filtered = links.filter((l) => l.needs_review);
     else if (filter === "done")
-      filtered = links.filter((l) => !l.needs_review && l.status !== "todo");
+      filtered = links.filter((l) => !l.needs_review && l.status === "applied");
+    else if (filter === "dropped")
+      filtered = links.filter((l) => !l.needs_review && l.status === "dropped");
     else
       filtered = links.filter(
         (l) => !l.needs_review && l.status === "todo" && !isSnoozed(l)
@@ -330,9 +335,13 @@ export function LinksApp({
       )}
 
       <div className="mb-3 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
-        {(["active", "review", "done", "all"] as const).map((f) => {
+        {(["active", "review", "done", "dropped", "all"] as const).map((f) => {
           const count =
-            f === "active" ? counts.active : f === "review" ? counts.review : f === "done" ? counts.done : counts.total;
+            f === "active" ? counts.active
+            : f === "review" ? counts.review
+            : f === "done" ? counts.done
+            : f === "dropped" ? counts.dropped
+            : counts.total;
           return (
             <button
               key={f}
@@ -355,6 +364,8 @@ export function LinksApp({
             ? "No active links. Paste some above."
             : filter === "review"
             ? "No links flagged for review."
+            : filter === "dropped"
+            ? "No dropped links."
             : "Nothing here yet."}
         </p>
       ) : (
@@ -494,6 +505,10 @@ function LinkItem({
   const [company, setCompany] = useState(link.company ?? "");
   const [title, setTitle] = useState(link.title ?? "");
   const [notes, setNotes] = useState(link.notes ?? "");
+  const isApplied = link.status === "applied";
+  const isDropped = link.status === "dropped";
+  // Strike-through styling applies to any terminal state (applied or
+  // dropped). Both are "no longer active" outcomes.
   const checked = link.status !== "todo";
   const snoozed =
     !!link.snoozed_until && new Date(link.snoozed_until).getTime() > Date.now();
@@ -503,7 +518,10 @@ function LinkItem({
     : reviewOpen;
 
   function toggleChecked() {
-    onPatch(link.id, { status: checked ? "todo" : "applied" });
+    // Dropped is its own terminal state; the only way out is the Undrop
+    // button. Clicking the checkbox here would be ambiguous.
+    if (isDropped) return;
+    onPatch(link.id, { status: isApplied ? "todo" : "applied" });
   }
 
   function saveEdits() {
@@ -523,16 +541,30 @@ function LinkItem({
       <div className="flex items-start gap-3">
         <button
           onClick={toggleChecked}
-          aria-label={checked ? "Mark as todo" : "Mark as applied"}
+          disabled={isDropped}
+          aria-label={
+            isDropped
+              ? "Dropped — use Undrop to restore"
+              : isApplied
+              ? "Mark as todo"
+              : "Mark as applied"
+          }
           className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
-            checked
+            isApplied
               ? "border-emerald-600 bg-emerald-600 text-white"
+              : isDropped
+              ? "cursor-not-allowed border-rose-300 bg-rose-50 text-rose-400 dark:border-rose-900/60 dark:bg-rose-950/40"
               : "border-neutral-400 bg-white dark:bg-neutral-950"
           }`}
         >
-          {checked && (
+          {isApplied && (
             <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5}>
               <path d="M3 8.5l3.2 3.2L13 5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+          {isDropped && (
+            <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2.5}>
+              <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
             </svg>
           )}
         </button>
@@ -604,6 +636,11 @@ function LinkItem({
                 {link.needs_review && (
                   <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-900 dark:bg-amber-900 dark:text-amber-100">
                     Review
+                  </span>
+                )}
+                {isDropped && (
+                  <span className="rounded-full bg-rose-200 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rose-900 dark:bg-rose-900 dark:text-rose-100">
+                    Dropped
                   </span>
                 )}
               </div>
@@ -721,6 +758,25 @@ function LinkItem({
             title="Add a comment"
           >
             Comment
+          </button>
+          <button
+            onClick={() =>
+              onPatch(link.id, {
+                status: link.status === "dropped" ? "todo" : "dropped",
+              })
+            }
+            className={`text-xs ${
+              link.status === "dropped"
+                ? "text-rose-600 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-200"
+                : "text-neutral-400 hover:text-rose-600"
+            }`}
+            title={
+              link.status === "dropped"
+                ? "Restore this link to active"
+                : "Mark this link as dropped (gave up on applying)"
+            }
+          >
+            {link.status === "dropped" ? "Undrop" : "Drop"}
           </button>
           <button
             onClick={() => setEditing((v) => !v)}
@@ -969,6 +1025,7 @@ const EVENT_DESC: Record<string, string> = {
   snoozed: "snoozed",
   unsnoozed: "unsnoozed",
   commented: "commented",
+  dropped: "dropped",
   deleted: "deleted",
 };
 
