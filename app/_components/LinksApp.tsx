@@ -1006,6 +1006,7 @@ const EVENT_DESC: Record<string, string> = {
   unsnoozed: "unsnoozed",
   commented: "commented",
   dropped: "dropped",
+  restored: "restored to active",
   deleted: "deleted",
 };
 

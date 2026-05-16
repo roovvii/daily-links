@@ -83,6 +83,14 @@ export async function getLinkReviewState(id: number): Promise<boolean | null> {
   return rows[0] ? rows[0].needs_review : null;
 }
 
+export async function getLinkStatus(id: number): Promise<LinkStatus | null> {
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT status FROM links WHERE id = ${id}
+  `) as unknown as { status: LinkStatus }[];
+  return rows[0] ? rows[0].status : null;
+}
+
 export async function setReview(
   id: number,
   note: string,

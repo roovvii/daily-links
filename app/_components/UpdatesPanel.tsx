@@ -13,6 +13,7 @@ const EVENT_VERB: Record<EventType, (count: number) => string> = {
   unsnoozed: (n) => `unsnoozed ${n} link${n === 1 ? "" : "s"}`,
   commented: (n) => `commented on ${n} link${n === 1 ? "" : "s"}`,
   dropped: (n) => `dropped ${n} link${n === 1 ? "" : "s"}`,
+  restored: (n) => `restored ${n} link${n === 1 ? "" : "s"}`,
   deleted: (n) => `deleted ${n} link${n === 1 ? "" : "s"}`,
 };
 

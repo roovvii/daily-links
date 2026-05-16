@@ -17,6 +17,7 @@ export type EventType =
   | "unsnoozed"
   | "commented"
   | "dropped"
+  | "restored"
   | "deleted";
 
 export type EventSession = {

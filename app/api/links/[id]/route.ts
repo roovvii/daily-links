@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { deleteLink, insertEvent, updateLink } from "@/lib/db";
+import { deleteLink, getLinkStatus, insertEvent, updateLink } from "@/lib/db";
 import { getRoleFromRequest } from "@/lib/auth";
 import type { LinkStatus } from "@/lib/types";
 import { STATUS_OPTIONS } from "@/lib/types";
@@ -31,10 +31,26 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if ("company" in body) patch.company = body.company === null ? null : String(body.company);
   if ("title" in body) patch.title = body.title === null ? null : String(body.title);
 
+  // If status is changing, read the prior status BEFORE the update so we
+  // can decide which event to log. A todo-bound transition is only a
+  // 'restored' if the link was actually in a terminal state.
+  let priorStatus: LinkStatus | null = null;
+  if (patch.status) {
+    priorStatus = await getLinkStatus(id);
+  }
+
   const row = await updateLink(id, patch);
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
-  if (patch.status && patch.status !== "todo") {
-    await insertEvent(role, patch.status, id);
+
+  if (patch.status) {
+    if (patch.status === "todo") {
+      // Restoring out of applied/dropped. No-op if the link was already todo.
+      if (priorStatus === "applied" || priorStatus === "dropped") {
+        await insertEvent(role, "restored", id);
+      }
+    } else {
+      await insertEvent(role, patch.status, id);
+    }
   }
   return NextResponse.json({ link: row });
 }
