@@ -9,6 +9,11 @@ const ALLOWED_TYPES = [
   "image/webp",
   "image/gif",
   "image/avif",
+  // Resume / document attachments. The Review panel accepts these alongside
+  // screenshots so a flag can ship with the resume that was used.
+  "application/pdf",
+  "application/msword", // .doc
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
 ];
 
 export async function POST(req: Request): Promise<NextResponse> {
@@ -20,7 +25,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       onBeforeGenerateToken: async (pathname) => ({
         allowedContentTypes: ALLOWED_TYPES,
         addRandomSuffix: true,
-        maximumSizeInBytes: 15 * 1024 * 1024,
+        maximumSizeInBytes: 10 * 1024 * 1024,
         tokenPayload: JSON.stringify({ pathname }),
       }),
       onUploadCompleted: async () => {

@@ -1105,6 +1105,39 @@ function HistoryPanel({ linkId, onClose }: { linkId: number; onClose: () => void
   );
 }
 
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "webp", "gif", "avif"]);
+
+const DOC_MIME_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+
+// Map a MIME type to the file extension to use in the blob path. For docs
+// the second half of the MIME type isn't a useful filename suffix
+// (e.g. 'vnd.openxmlformats-officedocument.wordprocessingml.document'),
+// so we map explicitly.
+function extForMime(mime: string): string {
+  if (mime === "application/pdf") return "pdf";
+  if (mime === "application/msword") return "doc";
+  if (mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return "docx";
+  if (mime.startsWith("image/")) return mime.slice("image/".length);
+  return "bin";
+}
+
+function isImageAttachment(url: string): boolean {
+  const clean = url.split("?")[0].toLowerCase();
+  const dot = clean.lastIndexOf(".");
+  if (dot < 0) return false;
+  return IMAGE_EXTS.has(clean.slice(dot + 1));
+}
+
+function attachmentExtLabel(url: string): string {
+  const clean = url.split("?")[0].toLowerCase();
+  const dot = clean.lastIndexOf(".");
+  return dot < 0 ? "FILE" : clean.slice(dot + 1).toUpperCase();
+}
+
 function ReviewPanel({
   link,
   isAdmin,
@@ -1126,15 +1159,21 @@ function ReviewPanel({
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // The Lightbox navigates only through images. Non-image attachments
+  // (resumes) live in the same array but open in a new tab on click.
+  const imageUrls = useMemo(() => images.filter(isImageAttachment), [images]);
+
   async function uploadFiles(files: File[]) {
-    const valid = files.filter((f) => f.type.startsWith("image/"));
+    const valid = files.filter(
+      (f) => f.type.startsWith("image/") || DOC_MIME_TYPES.has(f.type)
+    );
     if (valid.length === 0) return;
     setError(null);
     setUploading((n) => n + valid.length);
     const urls: string[] = [];
     for (const file of valid) {
       try {
-        const ext = file.type.split("/")[1] || "bin";
+        const ext = extForMime(file.type);
         const name = `reviews/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
         const blob = await upload(name, file, {
           access: "public",
@@ -1175,7 +1214,7 @@ function ReviewPanel({
 
   async function handleSave() {
     if (!note.trim() && images.length === 0) {
-      setError("Add a note or at least one image.");
+      setError("Add a note or at least one attachment.");
       return;
     }
     setSaving(true);
@@ -1201,7 +1240,7 @@ function ReviewPanel({
         className="mt-2 rounded-md border border-dashed border-amber-300 bg-white/60 p-2 text-xs text-neutral-600 dark:border-amber-800 dark:bg-neutral-900/40 dark:text-neutral-300"
       >
         <div className="flex items-center justify-between">
-          <span>Drop screenshots here, paste with Ctrl+V, or</span>
+          <span>Drop screenshots or resume (PDF/Word) here, paste with Ctrl+V, or</span>
           <button
             onClick={() => fileInputRef.current?.click()}
             className="rounded bg-white px-2 py-0.5 text-xs text-neutral-900 hover:bg-neutral-100 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
@@ -1211,7 +1250,7 @@ function ReviewPanel({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             multiple
             className="hidden"
             onChange={(e) => {
@@ -1224,30 +1263,51 @@ function ReviewPanel({
 
         {(images.length > 0 || uploading > 0) && (
           <div className="mt-2 flex flex-wrap gap-2">
-            {images.map((url, i) => (
-              <div key={url + i} className="group relative">
-                <button
-                  type="button"
-                  onClick={() => setLightboxIdx(i)}
-                  className="block"
-                  aria-label="Open image"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={url}
-                    alt=""
-                    className="h-16 w-16 cursor-zoom-in rounded border border-neutral-300 object-cover dark:border-neutral-700"
-                  />
-                </button>
-                <button
-                  onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
-                  className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-neutral-900 text-xs text-white group-hover:flex"
-                  aria-label="Remove image"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
+            {images.map((url, i) => {
+              const isImage = isImageAttachment(url);
+              return (
+                <div key={url + i} className="group relative">
+                  {isImage ? (
+                    <button
+                      type="button"
+                      onClick={() => setLightboxIdx(imageUrls.indexOf(url))}
+                      className="block"
+                      aria-label="Open image"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={url}
+                        alt=""
+                        className="h-16 w-16 cursor-zoom-in rounded border border-neutral-300 object-cover dark:border-neutral-700"
+                      />
+                    </button>
+                  ) : (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex h-16 w-16 flex-col items-center justify-center gap-1 rounded border border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                      title="Open file in new tab"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.6}>
+                        <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" strokeLinejoin="round" />
+                        <path d="M14 3v5h5" strokeLinejoin="round" />
+                      </svg>
+                      <span className="text-[9px] font-semibold tracking-wider">
+                        {attachmentExtLabel(url)}
+                      </span>
+                    </a>
+                  )}
+                  <button
+                    onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
+                    className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-neutral-900 text-xs text-white group-hover:flex"
+                    aria-label="Remove attachment"
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
             {Array.from({ length: uploading }).map((_, i) => (
               <div
                 key={`up-${i}`}
@@ -1290,9 +1350,9 @@ function ReviewPanel({
           </span>
         )}
       </div>
-      {lightboxIdx !== null && (
+      {lightboxIdx !== null && lightboxIdx >= 0 && (
         <Lightbox
-          images={images}
+          images={imageUrls}
           index={lightboxIdx}
           onIndexChange={setLightboxIdx}
           onClose={() => setLightboxIdx(null)}
