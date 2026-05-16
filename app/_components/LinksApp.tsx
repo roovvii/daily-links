@@ -518,13 +518,10 @@ function LinkItem({
     : reviewOpen;
 
   function setStatusViaSegment(target: "applied" | "dropped") {
-    // Clicking the currently-active segment reverts to todo. Clicking the
-    // other segment switches the link to that terminal state.
-    if (link.status === target) {
-      onPatch(link.id, { status: "todo" });
-    } else {
-      onPatch(link.id, { status: target });
-    }
+    // The pill only renders for todo links, so this is always a forward
+    // transition into a terminal state. To revert later, the action row
+    // shows a Restore button on resolved rows.
+    onPatch(link.id, { status: target });
   }
 
   function saveEdits() {
@@ -542,40 +539,33 @@ function LinkItem({
   return (
     <li className={`px-4 py-3 ${link.needs_review ? "bg-amber-50/40 dark:bg-amber-950/20" : ""}`}>
       <div className="flex items-start gap-3">
-        {/* Primary outcome selector sits at the front of the row where the
-            checkbox used to be. Currently-active segment is filled in its
-            color; clicking it again reverts to todo. Clicking the inactive
-            segment switches between Applied and Dropped directly. */}
-        <div
-          role="group"
-          aria-label="Mark link as done or dropped"
-          className="mt-0.5 flex shrink-0 overflow-hidden rounded-md border border-neutral-300 dark:border-neutral-700"
-        >
-          <button
-            onClick={() => setStatusViaSegment("applied")}
-            aria-pressed={isApplied}
-            title={isApplied ? "Click to revert to active" : "Mark as done"}
-            className={`px-3 py-1 text-xs font-medium transition-colors ${
-              isApplied
-                ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                : "bg-white text-emerald-700 hover:bg-emerald-50 dark:bg-neutral-900 dark:text-emerald-400 dark:hover:bg-emerald-950/60"
-            }`}
+        {/* Primary outcome selector. Only shown for links that are still in
+            their active (todo) state - that's where the apply / drop
+            decision happens. Once a link is in a terminal state (applied
+            or dropped) the pill is hidden; if you need to revert by
+            mistake, use the Restore button in the action row. */}
+        {link.status === "todo" && (
+          <div
+            role="group"
+            aria-label="Mark link as done or dropped"
+            className="mt-0.5 flex shrink-0 overflow-hidden rounded-md border border-neutral-300 dark:border-neutral-700"
           >
-            Done
-          </button>
-          <button
-            onClick={() => setStatusViaSegment("dropped")}
-            aria-pressed={isDropped}
-            title={isDropped ? "Click to revert to active" : "Mark as dropped"}
-            className={`border-l border-neutral-300 px-3 py-1 text-xs font-medium transition-colors dark:border-neutral-700 ${
-              isDropped
-                ? "bg-rose-600 text-white hover:bg-rose-700"
-                : "bg-white text-rose-700 hover:bg-rose-50 dark:bg-neutral-900 dark:text-rose-400 dark:hover:bg-rose-950/60"
-            }`}
-          >
-            Drop
-          </button>
-        </div>
+            <button
+              onClick={() => setStatusViaSegment("applied")}
+              title="Mark as done"
+              className="bg-white px-3 py-1 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-50 dark:bg-neutral-900 dark:text-emerald-400 dark:hover:bg-emerald-950/60"
+            >
+              Done
+            </button>
+            <button
+              onClick={() => setStatusViaSegment("dropped")}
+              title="Mark as dropped"
+              className="border-l border-neutral-300 bg-white px-3 py-1 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-rose-400 dark:hover:bg-rose-950/60"
+            >
+              Drop
+            </button>
+          </div>
+        )}
 
         <div className="min-w-0 flex-1">
           {editing ? (
@@ -759,6 +749,15 @@ function LinkItem({
           >
             Comment
           </button>
+          {(isApplied || isDropped) && (
+            <button
+              onClick={() => onPatch(link.id, { status: "todo" })}
+              className="text-xs text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+              title="Send back to Active"
+            >
+              Restore
+            </button>
+          )}
           <button
             onClick={() => setEditing((v) => !v)}
             className="text-xs text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
