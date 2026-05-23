@@ -153,15 +153,22 @@ export async function deleteLink(id: number): Promise<void> {
   await sql`DELETE FROM links WHERE id = ${id}`;
 }
 
-// Bulk-delete every link added within the last `days` days (rolling window
-// from NOW()). Returns the ids removed so the client can prune its local
-// state exactly. Events referencing these links keep their rows but have
-// link_id set to NULL via the ON DELETE SET NULL foreign key.
-export async function deleteLinksSince(days: number): Promise<number[]> {
+// Clear out stale active links: unapplied postings (status 'todo', not
+// flagged for review, not snoozed) that were added MORE than `days` days
+// ago. Applying to a job posting that's a week old is pointless, so this
+// old backlog just clutters the Active tab. Applied and dropped links are
+// deliberately left alone to preserve history and the stats that join
+// against them. Returns the removed ids so the client can prune its local
+// state exactly; events referencing these links keep their rows with
+// link_id set to NULL via ON DELETE SET NULL.
+export async function deleteStaleActiveLinks(days: number): Promise<number[]> {
   const sql = getSql();
   const rows = (await sql`
     DELETE FROM links
-    WHERE created_at >= NOW() - (${days} || ' days')::interval
+    WHERE created_at < NOW() - (${days} || ' days')::interval
+      AND status = 'todo'
+      AND needs_review = FALSE
+      AND (snoozed_until IS NULL OR snoozed_until <= NOW())
     RETURNING id
   `) as unknown as { id: number }[];
   return rows.map((r) => r.id);

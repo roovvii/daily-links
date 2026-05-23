@@ -217,16 +217,23 @@ export function LinksApp({
 
   async function bulkDelete(days: number) {
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    // Mirror the Active tab: only unapplied todo links that aren't flagged
+    // for review or snoozed, and only those older than the cutoff. Applied
+    // and dropped links are never touched.
     const affected = links.filter(
-      (l) => new Date(l.created_at).getTime() >= cutoff
+      (l) =>
+        new Date(l.created_at).getTime() < cutoff &&
+        l.status === "todo" &&
+        !l.needs_review &&
+        !isSnoozed(l)
     );
     if (affected.length === 0) {
-      setDeleteMsg(`No links added in the past ${days} days.`);
+      setDeleteMsg(`No active links older than ${days} days.`);
       return;
     }
     if (
       !confirm(
-        `Delete ${affected.length} link${affected.length === 1 ? "" : "s"} added in the past ${days} days? This cannot be undone.`
+        `Delete ${affected.length} active link${affected.length === 1 ? "" : "s"} older than ${days} days? These are unapplied postings from ${days}+ days ago. This cannot be undone.`
       )
     )
       return;
@@ -389,22 +396,24 @@ export function LinksApp({
 
       {isAdmin && (
         <div className="mb-6 flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-neutral-500">Bulk delete by date added:</span>
+          <span className="text-neutral-500">Clear stale active links:</span>
           <button
             type="button"
             onClick={() => bulkDelete(4)}
             disabled={deleting}
+            title="Delete unapplied active links posted more than 4 days ago"
             className="rounded border border-neutral-300 px-2 py-1 font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60 dark:border-neutral-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
           >
-            Past 4 days
+            Older than 4 days
           </button>
           <button
             type="button"
             onClick={() => bulkDelete(7)}
             disabled={deleting}
+            title="Delete unapplied active links posted more than 7 days ago"
             className="rounded border border-neutral-300 px-2 py-1 font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60 dark:border-neutral-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
           >
-            Past 7 days
+            Older than 7 days
           </button>
           {deleteMsg && <span className="text-neutral-500">{deleteMsg}</span>}
         </div>

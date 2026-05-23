@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   createLink,
-  deleteLinksSince,
+  deleteStaleActiveLinks,
   insertEvent,
   insertEventsBulk,
   listLinks,
@@ -61,7 +61,7 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "days must be 4 or 7" }, { status: 400 });
   }
 
-  const ids = await deleteLinksSince(days);
+  const ids = await deleteStaleActiveLinks(days);
   if (ids.length > 0) {
     await insertEvent(role, "deleted", null);
   }
