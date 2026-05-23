@@ -36,16 +36,20 @@ function sameDay(a: Date, b: Date): boolean {
   );
 }
 
-function dateGroupLabel(iso: string): string {
+function relativeDay(iso: string, nowMs: number): string {
   const d = new Date(iso);
-  const now = new Date();
+  const now = new Date(nowMs);
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
   if (sameDay(d, now)) return "Today";
   if (sameDay(d, yesterday)) return "Yesterday";
-  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString(undefined, { weekday: "long" });
+}
+
+function fullDate(iso: string, nowMs: number): string {
+  const d = new Date(iso);
+  const sameYear = d.getFullYear() === new Date(nowMs).getFullYear();
   return d.toLocaleDateString(undefined, {
-    weekday: "short",
     month: "short",
     day: "numeric",
     ...(sameYear ? {} : { year: "numeric" }),
@@ -76,15 +80,31 @@ function timeAgoOrClock(iso: string, nowMs: number): string {
   return `${hr}h ago`;
 }
 
-function groupByDate(rows: LinkRow[]): { label: string; items: LinkRow[] }[] {
-  const groups: { label: string; items: LinkRow[] }[] = [];
+// A "batch" is one posting session: a burst of links added close together.
+// Rows arrive newest-first. Start a new batch whenever the gap to the
+// previous (newer) link exceeds 30 minutes or the calendar day changes, so
+// two separate pastes on the same day render as two distinct groups. The
+// 30-minute window matches the session threshold used by the updates feed.
+const BATCH_GAP_MS = 30 * 60 * 1000;
+
+function groupByBatch(rows: LinkRow[]): LinkRow[][] {
+  const batches: LinkRow[][] = [];
   for (const row of rows) {
-    const label = dateGroupLabel(row.created_at);
-    const last = groups[groups.length - 1];
-    if (last && last.label === label) last.items.push(row);
-    else groups.push({ label, items: [row] });
+    const last = batches[batches.length - 1];
+    if (last) {
+      const prev = new Date(last[last.length - 1].created_at);
+      const cur = new Date(row.created_at);
+      if (
+        sameDay(prev, cur) &&
+        Math.abs(prev.getTime() - cur.getTime()) <= BATCH_GAP_MS
+      ) {
+        last.push(row);
+        continue;
+      }
+    }
+    batches.push([row]);
   }
-  return groups;
+  return batches;
 }
 
 export function LinksApp({
@@ -103,6 +123,8 @@ export function LinksApp({
   const [text, setText] = useState("");
   const [adding, startAdd] = useTransition();
   const [addMsg, setAddMsg] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteMsg, setDeleteMsg] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -191,6 +213,37 @@ export function LinksApp({
       if (added.length) bumpStats();
       router.refresh();
     });
+  }
+
+  async function bulkDelete(days: number) {
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const affected = links.filter(
+      (l) => new Date(l.created_at).getTime() >= cutoff
+    );
+    if (affected.length === 0) {
+      setDeleteMsg(`No links added in the past ${days} days.`);
+      return;
+    }
+    if (
+      !confirm(
+        `Delete ${affected.length} link${affected.length === 1 ? "" : "s"} added in the past ${days} days? This cannot be undone.`
+      )
+    )
+      return;
+    setDeleting(true);
+    setDeleteMsg(null);
+    const res = await fetch(`/api/links?days=${days}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    setDeleting(false);
+    if (!res.ok) {
+      setDeleteMsg(data.error ?? "Failed to delete");
+      return;
+    }
+    const deletedIds = new Set<number>((data.ids as number[]) ?? []);
+    setLinks((prev) => prev.filter((l) => !deletedIds.has(l.id)));
+    setDeleteMsg(`Deleted ${data.deleted ?? deletedIds.size}.`);
+    bumpStats();
+    router.refresh();
   }
 
   function replaceLink(updated: LinkRow) {
@@ -334,6 +387,29 @@ export function LinksApp({
         </form>
       )}
 
+      {isAdmin && (
+        <div className="mb-6 flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-neutral-500">Bulk delete by date added:</span>
+          <button
+            type="button"
+            onClick={() => bulkDelete(4)}
+            disabled={deleting}
+            className="rounded border border-neutral-300 px-2 py-1 font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60 dark:border-neutral-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
+          >
+            Past 4 days
+          </button>
+          <button
+            type="button"
+            onClick={() => bulkDelete(7)}
+            disabled={deleting}
+            className="rounded border border-neutral-300 px-2 py-1 font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60 dark:border-neutral-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
+          >
+            Past 7 days
+          </button>
+          {deleteMsg && <span className="text-neutral-500">{deleteMsg}</span>}
+        </div>
+      )}
+
       <div className="mb-3 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
         {(["active", "review", "done", "dropped", "all"] as const).map((f) => {
           const count =
@@ -369,20 +445,29 @@ export function LinksApp({
             : "Nothing here yet."}
         </p>
       ) : (
-        <div className="space-y-4">
-          {(mounted ? groupByDate(visible) : [{ label: "", items: visible }]).map(
-            (group, idx) => (
-              <section key={group.label || `pre-${idx}`}>
-                {mounted && group.label && (
-                  <h2 className="mb-1.5 px-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
-                    {group.label}
-                    <span className="ml-2 font-normal normal-case tracking-normal text-neutral-400">
-                      {group.items.length} link{group.items.length === 1 ? "" : "s"}
+        <div className="space-y-6">
+          {(mounted ? groupByBatch(visible) : [visible]).map((items, idx) => {
+            const head = items[0];
+            return (
+              <section key={mounted ? head.id : `pre-${idx}`}>
+                {mounted && (
+                  <h2 className="mb-1.5 flex flex-wrap items-baseline gap-x-2 px-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                    <span className="text-neutral-700 dark:text-neutral-300">
+                      {relativeDay(head.created_at, now)}
+                    </span>
+                    <span className="text-neutral-300 dark:text-neutral-600">·</span>
+                    <span>{fullDate(head.created_at, now)}</span>
+                    <span className="text-neutral-300 dark:text-neutral-600">·</span>
+                    <span className="font-normal normal-case tracking-normal text-neutral-400">
+                      {formatTime(head.created_at)}
+                    </span>
+                    <span className="ml-auto font-normal normal-case tracking-normal text-neutral-400">
+                      {items.length} link{items.length === 1 ? "" : "s"}
                     </span>
                   </h2>
                 )}
                 <ul className="divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white dark:divide-neutral-800 dark:border-neutral-800 dark:bg-neutral-900">
-                  {group.items.map((l) => (
+                  {items.map((l) => (
                     <LinkItem
                       key={l.id}
                       link={l}
@@ -402,8 +487,8 @@ export function LinksApp({
                   ))}
                 </ul>
               </section>
-            )
-          )}
+            );
+          })}
         </div>
       )}
         </main>

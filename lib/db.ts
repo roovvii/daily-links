@@ -153,6 +153,20 @@ export async function deleteLink(id: number): Promise<void> {
   await sql`DELETE FROM links WHERE id = ${id}`;
 }
 
+// Bulk-delete every link added within the last `days` days (rolling window
+// from NOW()). Returns the ids removed so the client can prune its local
+// state exactly. Events referencing these links keep their rows but have
+// link_id set to NULL via the ON DELETE SET NULL foreign key.
+export async function deleteLinksSince(days: number): Promise<number[]> {
+  const sql = getSql();
+  const rows = (await sql`
+    DELETE FROM links
+    WHERE created_at >= NOW() - (${days} || ' days')::interval
+    RETURNING id
+  `) as unknown as { id: number }[];
+  return rows.map((r) => r.id);
+}
+
 export async function setSnooze(
   id: number,
   until: string
