@@ -9,6 +9,7 @@ import { ClockCard } from "./ClockStrip";
 import { UpdatesCard } from "./UpdatesPanel";
 import { TrendChart } from "./TrendChart";
 import { TodayStats } from "./TodayStats";
+import { FaqCard } from "./Faq";
 
 type Filter = "active" | "review" | "done" | "dropped" | "all";
 
@@ -371,8 +372,12 @@ export function LinksApp({
         </div>
       )}
 
-      {isAdmin && (
-        <form onSubmit={onAdd} className="mb-6 space-y-2">
+      <div className={`mb-6 grid items-start gap-4 ${isAdmin ? "md:grid-cols-2" : ""}`}>
+        {isAdmin && (
+        <form
+          onSubmit={onAdd}
+          className="space-y-2 rounded-md border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
+        >
           <label className="block text-sm font-medium">Add links</label>
           <textarea
             value={text}
@@ -392,32 +397,10 @@ export function LinksApp({
             </button>
           </div>
         </form>
-      )}
+        )}
 
-      {isAdmin && (
-        <div className="mb-6 flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-neutral-500">Clear stale active links:</span>
-          <button
-            type="button"
-            onClick={() => bulkDelete(4)}
-            disabled={deleting}
-            title="Delete unapplied active links posted more than 4 days ago"
-            className="rounded border border-neutral-300 px-2 py-1 font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60 dark:border-neutral-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
-          >
-            Older than 4 days
-          </button>
-          <button
-            type="button"
-            onClick={() => bulkDelete(7)}
-            disabled={deleting}
-            title="Delete unapplied active links posted more than 7 days ago"
-            className="rounded border border-neutral-300 px-2 py-1 font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60 dark:border-neutral-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
-          >
-            Older than 7 days
-          </button>
-          {deleteMsg && <span className="text-neutral-500">{deleteMsg}</span>}
-        </div>
-      )}
+        <FaqCard isAdmin={isAdmin} />
+      </div>
 
       <div className="mb-3 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">
         {(["active", "review", "done", "dropped", "all"] as const).map((f) => {
@@ -442,6 +425,31 @@ export function LinksApp({
           );
         })}
       </div>
+
+      {isAdmin && filter === "active" && (
+        <div className="mb-3 flex flex-wrap items-center justify-end gap-2 text-xs">
+          <span className="text-neutral-500">Clear stale backlog:</span>
+          <button
+            type="button"
+            onClick={() => bulkDelete(4)}
+            disabled={deleting}
+            title="Delete unapplied active links posted more than 4 days ago"
+            className="rounded border border-neutral-300 px-2 py-1 font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60 dark:border-neutral-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
+          >
+            Older than 4 days
+          </button>
+          <button
+            type="button"
+            onClick={() => bulkDelete(7)}
+            disabled={deleting}
+            title="Delete unapplied active links posted more than 7 days ago"
+            className="rounded border border-neutral-300 px-2 py-1 font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60 dark:border-neutral-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
+          >
+            Older than 7 days
+          </button>
+          {deleteMsg && <span className="text-neutral-500">{deleteMsg}</span>}
+        </div>
+      )}
 
       {visible.length === 0 ? (
         <p className="py-12 text-center text-sm text-neutral-500">

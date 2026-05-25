@@ -59,6 +59,16 @@ async function main() {
       seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+
+  console.log("Creating faqs table if missing...");
+  await sql`
+    CREATE TABLE IF NOT EXISTS faqs (
+      id SERIAL PRIMARY KEY,
+      question TEXT NOT NULL,
+      answer TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
   console.log("Done.");
 }
 

@@ -28,6 +28,13 @@ export type EventSession = {
   end_at: string;
 };
 
+export type FaqRow = {
+  id: number;
+  question: string;
+  answer: string;
+  created_at: string;
+};
+
 export type LinkRow = {
   id: number;
   url: string;

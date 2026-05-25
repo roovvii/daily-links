@@ -69,6 +69,11 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 - `POST /api/links` bulk add (body: `{ text: "url1\nurl2\n..." }`)
 - `PATCH /api/links/[id]` update status / notes / company / title
 - `DELETE /api/links/[id]` remove a link
+- `DELETE /api/links?days=4|7` (ravi only) clear stale active backlog: unapplied
+  links posted more than 4 or 7 days ago
+- `GET /api/faqs` list saved quick-answers
+- `POST /api/faqs` (ravi only) add a quick-answer (body: `{ question, answer }`)
+- `DELETE /api/faqs/[id]` (ravi only) remove a quick-answer
 
 ## Notes
 

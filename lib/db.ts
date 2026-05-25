@@ -1,5 +1,5 @@
 import { neon, neonConfig } from "@neondatabase/serverless";
-import type { LinkRow, LinkStatus } from "./types";
+import type { FaqRow, LinkRow, LinkStatus } from "./types";
 
 // Neon's serverless driver issues SQL queries via fetch(). On Vercel, fetch()
 // goes through Next.js's Data Cache by default and caches responses by URL +
@@ -382,4 +382,50 @@ export async function setLastSeen(role: string): Promise<string> {
     RETURNING seen_at
   `) as unknown as { seen_at: string }[];
   return rows[0].seen_at;
+}
+
+// FAQs are shared, copy-pastable answers used when filling out job
+// application forms (work authorization, salary expectations, etc.). The
+// table is created on demand so the feature works on a fresh deploy without
+// a manual migration; init-db.ts also creates it for completeness.
+async function ensureFaqTable(): Promise<void> {
+  const sql = getSql();
+  await sql`
+    CREATE TABLE IF NOT EXISTS faqs (
+      id SERIAL PRIMARY KEY,
+      question TEXT NOT NULL,
+      answer TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+}
+
+export async function listFaqs(): Promise<FaqRow[]> {
+  await ensureFaqTable();
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT id, question, answer, created_at::text AS created_at
+    FROM faqs
+    ORDER BY created_at ASC
+  `) as unknown as FaqRow[];
+  return rows;
+}
+
+export async function createFaq(
+  question: string,
+  answer: string
+): Promise<FaqRow> {
+  await ensureFaqTable();
+  const sql = getSql();
+  const rows = (await sql`
+    INSERT INTO faqs (question, answer)
+    VALUES (${question}, ${answer})
+    RETURNING id, question, answer, created_at::text AS created_at
+  `) as unknown as FaqRow[];
+  return rows[0];
+}
+
+export async function deleteFaq(id: number): Promise<void> {
+  const sql = getSql();
+  await sql`DELETE FROM faqs WHERE id = ${id}`;
 }
