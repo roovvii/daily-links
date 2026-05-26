@@ -372,7 +372,7 @@ export function LinksApp({
         </div>
       )}
 
-      <div className={`mb-6 grid items-start gap-4 ${isAdmin ? "md:grid-cols-2" : ""}`}>
+      <div className="mb-6 space-y-4">
         {isAdmin && (
         <form
           onSubmit={onAdd}
@@ -399,7 +399,7 @@ export function LinksApp({
         </form>
         )}
 
-        <FaqCard isAdmin={isAdmin} />
+        <FaqCard />
       </div>
 
       <div className="mb-3 flex gap-1 border-b border-neutral-200 dark:border-neutral-800">

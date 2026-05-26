@@ -72,8 +72,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 - `DELETE /api/links?days=4|7` (ravi only) clear stale active backlog: unapplied
   links posted more than 4 or 7 days ago
 - `GET /api/faqs` list saved quick-answers
-- `POST /api/faqs` (ravi only) add a quick-answer (body: `{ question, answer }`)
-- `DELETE /api/faqs/[id]` (ravi only) remove a quick-answer
+- `POST /api/faqs` add a quick-answer (body: `{ question, answer }`) — any role
+- `DELETE /api/faqs/[id]` remove a quick-answer — any role
 
 ## Notes
 

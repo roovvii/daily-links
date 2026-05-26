@@ -10,11 +10,11 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  // FAQs are a shared scratchpad both roles maintain together, so any
+  // authenticated user can add. The middleware already enforces auth on
+  // /api/* routes; we only need the role lookup to confirm a valid session.
   const role = await getRoleFromRequest(req);
   if (!role) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (role !== "ravi") {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
   const body = await req.json().catch(() => ({}));
   const question = typeof body.question === "string" ? body.question.trim() : "";
   const answer = typeof body.answer === "string" ? body.answer.trim() : "";
