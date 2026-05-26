@@ -376,22 +376,24 @@ export function LinksApp({
         {isAdmin && (
         <form
           onSubmit={onAdd}
-          className="space-y-2 rounded-md border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
+          className="rounded-md border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
         >
-          <label className="block text-sm font-medium">Add links</label>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Each URL on its own line. Duplicates are skipped."
-            rows={4}
-            className="w-full resize-y rounded-md border border-neutral-300 bg-white px-3 py-2 font-mono text-xs outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-950"
-          />
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-neutral-500">{addMsg ?? " "}</p>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <label className="text-sm font-medium">Add links</label>
+            {addMsg && <p className="text-xs text-neutral-500">{addMsg}</p>}
+          </div>
+          <div className="flex items-stretch gap-2">
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Each URL on its own line. Duplicates are skipped."
+              rows={4}
+              className="flex-1 resize-y rounded-md border border-neutral-300 bg-white px-3 py-2 font-mono text-xs outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-950"
+            />
             <button
               type="submit"
               disabled={adding || !text.trim()}
-              className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-60 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
+              className="shrink-0 rounded-md bg-neutral-900 px-5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-60 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
             >
               {adding ? "Adding..." : "Add"}
             </button>
