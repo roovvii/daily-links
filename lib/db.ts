@@ -1,5 +1,5 @@
 import { neon, neonConfig } from "@neondatabase/serverless";
-import type { FaqRow, LinkRow, LinkStatus } from "./types";
+import type { FaqRow, LinkRow, LinkStatus, VisaBucket } from "./types";
 
 // Neon's serverless driver issues SQL queries via fetch(). On Vercel, fetch()
 // goes through Next.js's Data Cache by default and caches responses by URL +
@@ -15,13 +15,42 @@ function getSql() {
   return neon(url);
 }
 
+// Posting-detail columns (experience, visa, arbitrary extras) were added
+// after the table shipped, so they're created on demand the same way the
+// faqs table is. Memoized per server instance: the ALTERs are no-ops once
+// applied, but running four of them ahead of every query is wasteful.
+// scripts/init-db.ts applies the same set for a fresh database.
+let detailColumnsReady: Promise<void> | null = null;
+
+async function ensureDetailColumns(): Promise<void> {
+  if (!detailColumnsReady) {
+    detailColumnsReady = (async () => {
+      const sql = getSql();
+      await sql`ALTER TABLE links ADD COLUMN IF NOT EXISTS experience_text TEXT`;
+      await sql`ALTER TABLE links ADD COLUMN IF NOT EXISTS min_years INT`;
+      await sql`ALTER TABLE links ADD COLUMN IF NOT EXISTS max_years INT`;
+      await sql`ALTER TABLE links ADD COLUMN IF NOT EXISTS visa TEXT NOT NULL DEFAULT 'unknown'`;
+      await sql`ALTER TABLE links ADD COLUMN IF NOT EXISTS visa_text TEXT`;
+      await sql`ALTER TABLE links ADD COLUMN IF NOT EXISTS meta JSONB`;
+    })().catch((err) => {
+      // Don't cache a failure: a transient error would otherwise wedge
+      // every later request into thinking the columns exist.
+      detailColumnsReady = null;
+      throw err;
+    });
+  }
+  return detailColumnsReady;
+}
+
 export async function listLinks(): Promise<LinkRow[]> {
+  await ensureDetailColumns();
   const sql = getSql();
   const rows = (await sql`
     SELECT id, url, company, title, source, status, notes,
            created_at, updated_at, completed_at,
            needs_review, review_note, review_images, review_flagged_at,
-           snoozed_until
+           snoozed_until,
+           experience_text, min_years, max_years, visa, visa_text, meta
     FROM links
     ORDER BY
       CASE status WHEN 'todo' THEN 0 ELSE 1 END,
@@ -35,11 +64,28 @@ export async function createLink(input: {
   company: string | null;
   title: string | null;
   source: string | null;
+  notes?: string | null;
+  experienceText?: string | null;
+  minYears?: number | null;
+  maxYears?: number | null;
+  visa?: VisaBucket;
+  visaText?: string | null;
+  meta?: Record<string, string> | null;
 }): Promise<LinkRow | null> {
+  await ensureDetailColumns();
   const sql = getSql();
   const rows = (await sql`
-    INSERT INTO links (url, company, title, source, status)
-    VALUES (${input.url}, ${input.company}, ${input.title}, ${input.source}, 'todo')
+    INSERT INTO links (
+      url, company, title, source, status, notes,
+      experience_text, min_years, max_years, visa, visa_text, meta
+    )
+    VALUES (
+      ${input.url}, ${input.company}, ${input.title}, ${input.source}, 'todo',
+      ${input.notes ?? null},
+      ${input.experienceText ?? null}, ${input.minYears ?? null}, ${input.maxYears ?? null},
+      ${input.visa ?? "unknown"}, ${input.visaText ?? null},
+      ${input.meta ? JSON.stringify(input.meta) : null}::jsonb
+    )
     ON CONFLICT (url) DO NOTHING
     RETURNING *
   `) as unknown as LinkRow[];
@@ -48,8 +94,15 @@ export async function createLink(input: {
 
 export async function updateLink(
   id: number,
-  patch: { status?: LinkStatus; notes?: string | null; company?: string | null; title?: string | null }
+  patch: {
+    status?: LinkStatus;
+    notes?: string | null;
+    company?: string | null;
+    title?: string | null;
+    visa?: VisaBucket;
+  }
 ): Promise<LinkRow | null> {
+  await ensureDetailColumns();
   const sql = getSql();
   const status = patch.status ?? null;
   // completed_at means "when the application was submitted", so it only
@@ -63,6 +116,7 @@ export async function updateLink(
       notes = COALESCE(${patch.notes ?? null}, notes),
       company = COALESCE(${patch.company ?? null}, company),
       title = COALESCE(${patch.title ?? null}, title),
+      visa = COALESCE(${patch.visa ?? null}, visa),
       completed_at = CASE
         WHEN ${status}::text IS NULL THEN completed_at
         WHEN ${status}::text = 'applied' THEN ${completedAt}::timestamptz

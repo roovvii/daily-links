@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { deleteLink, getLinkStatus, insertEvent, updateLink } from "@/lib/db";
 import { getRoleFromRequest } from "@/lib/auth";
-import type { LinkStatus } from "@/lib/types";
-import { STATUS_OPTIONS } from "@/lib/types";
+import type { LinkStatus, VisaBucket } from "@/lib/types";
+import { STATUS_OPTIONS, VISA_LABEL } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -23,7 +23,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     notes?: string | null;
     company?: string | null;
     title?: string | null;
+    visa?: VisaBucket;
   } = {};
+  if (typeof body.visa === "string" && body.visa in VISA_LABEL) {
+    patch.visa = body.visa as VisaBucket;
+  }
   if (typeof body.status === "string" && (STATUS_OPTIONS as string[]).includes(body.status)) {
     patch.status = body.status as LinkStatus;
   }

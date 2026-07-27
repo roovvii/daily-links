@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
-import type { LinkRow } from "@/lib/types";
+import type { LinkRow, VisaBucket } from "@/lib/types";
 import type { Role } from "@/lib/auth";
 import { ClockCard } from "./ClockStrip";
 import { UpdatesCard } from "./UpdatesPanel";
@@ -20,6 +20,63 @@ const FILTER_LABEL: Record<Filter, string> = {
   dropped: "Dropped",
   all: "All",
 };
+
+// Sponsorship buckets, ordered best-first. This is also the sort order used
+// by the "sponsors first" mode, so the postings worth applying to early sit
+// at the top of the list.
+const VISA_ORDER: VisaBucket[] = ["yes", "maybe", "unknown", "no"];
+
+const VISA_RANK: Record<VisaBucket, number> = {
+  yes: 0,
+  maybe: 1,
+  unknown: 2,
+  no: 3,
+};
+
+const VISA_SHORT: Record<VisaBucket, string> = {
+  yes: "Sponsors",
+  maybe: "Case-by-case",
+  no: "No sponsorship",
+  unknown: "Visa unknown",
+};
+
+const VISA_BADGE: Record<VisaBucket, string> = {
+  yes: "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/70 dark:text-emerald-100",
+  maybe: "bg-amber-100 text-amber-900 dark:bg-amber-900/70 dark:text-amber-100",
+  no: "bg-rose-100 text-rose-900 dark:bg-rose-900/70 dark:text-rose-100",
+  unknown: "bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300",
+};
+
+// How the experience filter treats each link relative to the threshold.
+// 'fits' also keeps postings with no parseable requirement rather than
+// guessing about them.
+type YearsMode = "all" | "fits" | "over";
+
+type SortMode = "newest" | "sponsor";
+
+const YEARS_KEY = "dailylinks.maxYears";
+
+// Years of experience the postings get measured against. Matches the
+// "Candidate Experience: 6 years" line in the resume prompt; adjustable in
+// the filter card and remembered per browser.
+const DEFAULT_MAX_YEARS = 6;
+
+function isOverExperience(l: LinkRow, threshold: number): boolean {
+  return l.min_years !== null && l.min_years > threshold;
+}
+
+// Compact badge text for the experience line: "5+ Years" -> "5+ yrs", while
+// unparseable values like "Varies" are shown as written.
+function yearsLabel(l: LinkRow): string | null {
+  if (!l.experience_text) return null;
+  const t = l.experience_text.trim();
+  if (!/\d/.test(t)) return t;
+  return `${t.replace(/\s*years?\b\.?/i, "").trim()} yrs`;
+}
+
+function hasDetails(l: LinkRow): boolean {
+  return !!(l.experience_text || l.visa_text || (l.meta && Object.keys(l.meta).length));
+}
 
 function hostOf(url: string): string {
   try {
@@ -126,6 +183,8 @@ export function LinksApp({
   const [addMsg, setAddMsg] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteMsg, setDeleteMsg] = useState<string | null>(null);
+  const [dropping, setDropping] = useState(false);
+  const [dropMsg, setDropMsg] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -160,8 +219,39 @@ export function LinksApp({
   }, [links, now]);
 
   const [search, setSearch] = useState("");
+  const [visaFilter, setVisaFilter] = useState<Set<VisaBucket>>(
+    () => new Set(VISA_ORDER)
+  );
+  const [yearsMode, setYearsMode] = useState<YearsMode>("all");
+  const [maxYears, setMaxYears] = useState(DEFAULT_MAX_YEARS);
+  const [sortMode, setSortMode] = useState<SortMode>("newest");
 
-  const visible = useMemo(() => {
+  // Read the saved threshold after mount so the server and client render the
+  // same markup on the first pass.
+  useEffect(() => {
+    const saved = Number(window.localStorage.getItem(YEARS_KEY));
+    if (Number.isFinite(saved) && saved > 0 && saved < 50) setMaxYears(saved);
+  }, []);
+
+  function changeMaxYears(n: number) {
+    setMaxYears(n);
+    window.localStorage.setItem(YEARS_KEY, String(n));
+  }
+
+  function toggleVisa(bucket: VisaBucket) {
+    setVisaFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(bucket)) next.delete(bucket);
+      else next.add(bucket);
+      // Turning the last chip off would show an empty list with no obvious
+      // way back, so an empty selection resets to showing everything.
+      return next.size === 0 ? new Set(VISA_ORDER) : next;
+    });
+  }
+
+  // Tab + text search only. The visa and experience filters are applied
+  // after this so their chip counts can describe the whole tab.
+  const tabRows = useMemo(() => {
     let filtered: LinkRow[];
     if (filter === "all") filtered = links;
     else if (filter === "review") filtered = links.filter((l) => l.needs_review);
@@ -182,11 +272,51 @@ export function LinksApp({
           (l.title ?? "").toLowerCase().includes(q) ||
           (l.source ?? "").toLowerCase().includes(q) ||
           (l.notes ?? "").toLowerCase().includes(q) ||
+          (l.experience_text ?? "").toLowerCase().includes(q) ||
+          (l.visa_text ?? "").toLowerCase().includes(q) ||
           l.url.toLowerCase().includes(q)
       );
     }
     return filtered;
-  }, [links, filter, search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [links, filter, search, now]);
+
+  const visaCounts = useMemo(() => {
+    const c: Record<VisaBucket, number> = { yes: 0, maybe: 0, no: 0, unknown: 0 };
+    for (const l of tabRows) c[l.visa]++;
+    return c;
+  }, [tabRows]);
+
+  const visible = useMemo(() => {
+    let rows = tabRows.filter((l) => visaFilter.has(l.visa));
+    if (yearsMode === "fits") rows = rows.filter((l) => !isOverExperience(l, maxYears));
+    else if (yearsMode === "over")
+      rows = rows.filter((l) => isOverExperience(l, maxYears));
+
+    if (sortMode === "sponsor") {
+      rows = [...rows].sort((a, b) => {
+        const rank = VISA_RANK[a.visa] - VISA_RANK[b.visa];
+        if (rank !== 0) return rank;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+    }
+    return rows;
+  }, [tabRows, visaFilter, yearsMode, maxYears, sortMode]);
+
+  // Active, unresolved postings asking for more experience than the
+  // threshold. These are what the bulk-drop button acts on.
+  const overExperience = useMemo(
+    () =>
+      links.filter(
+        (l) =>
+          l.status === "todo" &&
+          !l.needs_review &&
+          !isSnoozed(l) &&
+          isOverExperience(l, maxYears)
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [links, maxYears, now]
+  );
 
   function onAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -250,6 +380,54 @@ export function LinksApp({
     const deletedIds = new Set<number>((data.ids as number[]) ?? []);
     setLinks((prev) => prev.filter((l) => !deletedIds.has(l.id)));
     setDeleteMsg(`Deleted ${data.deleted ?? deletedIds.size}.`);
+    bumpStats();
+    router.refresh();
+  }
+
+  // Move every active posting above the experience threshold to Dropped.
+  // Dropped rather than deleted: the postings stay visible in the Dropped
+  // tab and a single Restore puts one back if the filter was too aggressive.
+  // Requests go out in small batches so a 30-link paste doesn't fire 30
+  // simultaneous writes at the database.
+  async function dropOverExperience() {
+    const targets = overExperience;
+    if (targets.length === 0) {
+      setDropMsg(`Nothing active asks for more than ${maxYears} years.`);
+      return;
+    }
+    if (
+      !confirm(
+        `Drop ${targets.length} active posting${targets.length === 1 ? "" : "s"} asking for more than ${maxYears} years of experience? They move to the Dropped tab and can be restored.`
+      )
+    )
+      return;
+    setDropping(true);
+    setDropMsg(null);
+    const updated: LinkRow[] = [];
+    for (let i = 0; i < targets.length; i += 6) {
+      const batch = targets.slice(i, i + 6);
+      const rows = await Promise.all(
+        batch.map(async (l) => {
+          const res = await fetch(`/api/links/${l.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "dropped" }),
+          });
+          if (!res.ok) return null;
+          const data = await res.json().catch(() => ({}));
+          return (data.link as LinkRow) ?? null;
+        })
+      );
+      for (const r of rows) if (r) updated.push(r);
+    }
+    const byId = new Map(updated.map((l) => [l.id, l]));
+    setLinks((prev) => prev.map((l) => byId.get(l.id) ?? l));
+    setDropping(false);
+    setDropMsg(
+      updated.length === targets.length
+        ? `Dropped ${updated.length}.`
+        : `Dropped ${updated.length} of ${targets.length}.`
+    );
     bumpStats();
     router.refresh();
   }
@@ -428,6 +606,25 @@ export function LinksApp({
         })}
       </div>
 
+      {filter === "active" && overExperience.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center justify-end gap-2 text-xs">
+          <span className="text-neutral-500">
+            {overExperience.length} active posting{overExperience.length === 1 ? "" : "s"} ask
+            {overExperience.length === 1 ? "s" : ""} for more than {maxYears} years:
+          </span>
+          <button
+            type="button"
+            onClick={dropOverExperience}
+            disabled={dropping}
+            title={`Move every active posting requiring more than ${maxYears} years to Dropped`}
+            className="rounded border border-neutral-300 px-2 py-1 font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60 dark:border-neutral-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
+          >
+            {dropping ? "Dropping..." : "Drop them"}
+          </button>
+          {dropMsg && <span className="text-neutral-500">{dropMsg}</span>}
+        </div>
+      )}
+
       {isAdmin && filter === "active" && (
         <div className="mb-3 flex flex-wrap items-center justify-end gap-2 text-xs">
           <span className="text-neutral-500">Clear stale backlog:</span>
@@ -455,7 +652,9 @@ export function LinksApp({
 
       {visible.length === 0 ? (
         <p className="py-12 text-center text-sm text-neutral-500">
-          {filter === "active"
+          {tabRows.length > 0
+            ? "No links match the current filters."
+            : filter === "active"
             ? "No active links. Paste some above."
             : filter === "review"
             ? "No links flagged for review."
@@ -465,11 +664,15 @@ export function LinksApp({
         </p>
       ) : (
         <div className="space-y-6">
-          {(mounted ? groupByBatch(visible) : [visible]).map((items, idx) => {
+          {/* Batch headers describe when a group of links was pasted, which
+              only holds while the list is in its natural newest-first order.
+              Sorting by sponsorship interleaves batches, so that mode renders
+              one flat list instead. */}
+          {(mounted && sortMode === "newest" ? groupByBatch(visible) : [visible]).map((items, idx) => {
             const head = items[0];
             return (
-              <section key={mounted ? head.id : `pre-${idx}`}>
-                {mounted && (
+              <section key={mounted && sortMode === "newest" ? head.id : `pre-${idx}`}>
+                {mounted && sortMode === "newest" && (
                   <h2 className="mb-1.5 flex flex-wrap items-baseline gap-x-2 px-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
                     <span className="text-neutral-700 dark:text-neutral-300">
                       {relativeDay(head.created_at, now)}
@@ -492,6 +695,7 @@ export function LinksApp({
                       link={l}
                       mounted={mounted}
                       now={now}
+                      overExperience={isOverExperience(l, maxYears)}
                       filterIsReview={filter === "review"}
                       isAdmin={isAdmin}
                       onPatch={patchLink}
@@ -532,6 +736,20 @@ export function LinksApp({
               </button>
             )}
           </div>
+          <FilterCard
+            visaFilter={visaFilter}
+            visaCounts={visaCounts}
+            onToggleVisa={toggleVisa}
+            onResetVisa={() => setVisaFilter(new Set(VISA_ORDER))}
+            yearsMode={yearsMode}
+            onYearsMode={setYearsMode}
+            maxYears={maxYears}
+            onMaxYears={changeMaxYears}
+            sortMode={sortMode}
+            onSortMode={setSortMode}
+            showing={visible.length}
+            total={tabRows.length}
+          />
           <ClockCard />
           <UpdatesCard role={role} version={statsVersion} />
           <TodayStats version={statsVersion} />
@@ -539,6 +757,151 @@ export function LinksApp({
         </aside>
       </div>
     </div>
+  );
+}
+
+function FilterCard({
+  visaFilter,
+  visaCounts,
+  onToggleVisa,
+  onResetVisa,
+  yearsMode,
+  onYearsMode,
+  maxYears,
+  onMaxYears,
+  sortMode,
+  onSortMode,
+  showing,
+  total,
+}: {
+  visaFilter: Set<VisaBucket>;
+  visaCounts: Record<VisaBucket, number>;
+  onToggleVisa: (b: VisaBucket) => void;
+  onResetVisa: () => void;
+  yearsMode: YearsMode;
+  onYearsMode: (m: YearsMode) => void;
+  maxYears: number;
+  onMaxYears: (n: number) => void;
+  sortMode: SortMode;
+  onSortMode: (m: SortMode) => void;
+  showing: number;
+  total: number;
+}) {
+  const filtered = showing !== total;
+  const allVisa = visaFilter.size === VISA_ORDER.length;
+
+  return (
+    <section className="rounded-lg border border-neutral-200 bg-white p-3 text-xs shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-sm font-medium">Filter</h2>
+        <span className="text-neutral-500">
+          {filtered ? `${showing} of ${total}` : `${total}`}
+        </span>
+      </div>
+
+      <p className="mb-1 font-medium uppercase tracking-wide text-neutral-500">
+        Sponsorship
+      </p>
+      <div className="flex flex-wrap gap-1">
+        {VISA_ORDER.map((b) => {
+          const on = visaFilter.has(b);
+          return (
+            <button
+              key={b}
+              type="button"
+              onClick={() => onToggleVisa(b)}
+              aria-pressed={on}
+              className={`rounded-full px-2 py-0.5 font-medium transition-opacity ${VISA_BADGE[b]} ${
+                on ? "" : "opacity-35"
+              }`}
+            >
+              {VISA_SHORT[b]}
+              <span className="ml-1 font-normal opacity-70">{visaCounts[b]}</span>
+            </button>
+          );
+        })}
+        {!allVisa && (
+          <button
+            type="button"
+            onClick={onResetVisa}
+            className="rounded-full px-2 py-0.5 text-neutral-500 underline-offset-2 hover:underline"
+          >
+            reset
+          </button>
+        )}
+      </div>
+
+      <p className="mb-1 mt-3 font-medium uppercase tracking-wide text-neutral-500">
+        Experience
+      </p>
+      <div className="flex items-center gap-2">
+        <div className="flex overflow-hidden rounded-md border border-neutral-300 dark:border-neutral-700">
+          {(
+            [
+              ["all", "All"],
+              ["fits", "Fits me"],
+              ["over", "Too senior"],
+            ] as const
+          ).map(([mode, label], i) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => onYearsMode(mode)}
+              className={`px-2 py-1 ${i > 0 ? "border-l border-neutral-300 dark:border-neutral-700" : ""} ${
+                yearsMode === mode
+                  ? "bg-neutral-900 font-medium text-white dark:bg-white dark:text-neutral-900"
+                  : "bg-white text-neutral-600 hover:bg-neutral-50 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <label className="flex items-center gap-1 text-neutral-500">
+          <input
+            type="number"
+            min={0}
+            max={40}
+            value={maxYears}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isFinite(n) && n >= 0 && n <= 40) onMaxYears(n);
+            }}
+            className="w-12 rounded border border-neutral-300 bg-white px-1 py-1 text-center dark:border-neutral-700 dark:bg-neutral-950"
+            aria-label="Your years of experience"
+          />
+          yrs
+        </label>
+      </div>
+      <p className="mt-1 text-[11px] text-neutral-400">
+        Postings with no stated requirement always show.
+      </p>
+
+      <p className="mb-1 mt-3 font-medium uppercase tracking-wide text-neutral-500">
+        Sort
+      </p>
+      <div className="flex overflow-hidden rounded-md border border-neutral-300 dark:border-neutral-700">
+        {(
+          [
+            ["newest", "Newest"],
+            ["sponsor", "Sponsors first"],
+          ] as const
+        ).map(([mode, label], i) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => onSortMode(mode)}
+            className={`flex-1 px-2 py-1 ${i > 0 ? "border-l border-neutral-300 dark:border-neutral-700" : ""} ${
+              sortMode === mode
+                ? "bg-neutral-900 font-medium text-white dark:bg-white dark:text-neutral-900"
+                : "bg-white text-neutral-600 hover:bg-neutral-50 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -575,6 +938,7 @@ function LinkItem({
   link,
   mounted,
   now,
+  overExperience,
   filterIsReview,
   isAdmin,
   onPatch,
@@ -589,6 +953,7 @@ function LinkItem({
   link: LinkRow;
   mounted: boolean;
   now: number;
+  overExperience: boolean;
   filterIsReview: boolean;
   isAdmin: boolean;
   onPatch: (id: number, body: Partial<LinkRow>) => void;
@@ -601,6 +966,7 @@ function LinkItem({
   onActivity: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
@@ -737,6 +1103,32 @@ function LinkItem({
                     Dropped
                   </span>
                 )}
+                {/* Sponsorship and experience read straight off the row so a
+                    posting can be triaged without opening anything. */}
+                {(link.visa !== "unknown" || link.visa_text) && (
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${VISA_BADGE[link.visa]}`}
+                    title={link.visa_text ?? VISA_SHORT[link.visa]}
+                  >
+                    {VISA_SHORT[link.visa]}
+                  </span>
+                )}
+                {yearsLabel(link) && (
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                      overExperience
+                        ? "bg-orange-100 text-orange-900 dark:bg-orange-900/70 dark:text-orange-100"
+                        : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
+                    }`}
+                    title={
+                      overExperience
+                        ? `Asks for ${link.experience_text}, above your threshold`
+                        : (link.experience_text ?? undefined)
+                    }
+                  >
+                    {yearsLabel(link)}
+                  </span>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
                 {link.source && <span>{link.source}</span>}
@@ -839,6 +1231,15 @@ function LinkItem({
           >
             {snoozed ? "Snoozed" : "Snooze"}
           </button>
+          {hasDetails(link) && (
+            <button
+              onClick={() => setDetailsOpen((v) => !v)}
+              className="text-xs text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+              title="Show everything this posting was added with"
+            >
+              Details
+            </button>
+          )}
           <button
             onClick={() => setHistoryOpen((v) => !v)}
             className="text-xs text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
@@ -896,6 +1297,8 @@ function LinkItem({
         />
       )}
 
+      {detailsOpen && <DetailsPanel link={link} onClose={() => setDetailsOpen(false)} />}
+
       {historyOpen && (
         <HistoryPanel linkId={link.id} onClose={() => setHistoryOpen(false)} />
       )}
@@ -923,6 +1326,53 @@ function LinkItem({
         />
       )}
     </li>
+  );
+}
+
+// Everything the posting was added with, including "Key: value" lines the
+// app has no column for. Unknown keys are rendered as-is rather than being
+// dropped at paste time, so adding a new field to the pasted list is enough
+// to see it here.
+function DetailsPanel({ link, onClose }: { link: LinkRow; onClose: () => void }) {
+  const rows: [string, string][] = [];
+  if (link.experience_text) rows.push(["Experience", link.experience_text]);
+  if (link.visa_text) rows.push(["Visa", link.visa_text]);
+  else if (link.visa !== "unknown") rows.push(["Visa", VISA_SHORT[link.visa]]);
+  for (const [k, v] of Object.entries(link.meta ?? {})) rows.push([k, v]);
+
+  return (
+    <div className="mt-3 rounded-md border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+          Posting details
+        </span>
+        <button
+          onClick={onClose}
+          className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
+        >
+          Close
+        </button>
+      </div>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+        {rows.map(([k, v], i) => (
+          <div key={`${k}-${i}`} className="contents">
+            <dt className="whitespace-nowrap font-medium text-neutral-500">{k}</dt>
+            <dd className="min-w-0 break-words text-neutral-700 dark:text-neutral-300">{v}</dd>
+          </div>
+        ))}
+        <dt className="whitespace-nowrap font-medium text-neutral-500">URL</dt>
+        <dd className="min-w-0 break-all">
+          <a
+            href={link.url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-neutral-700 hover:underline dark:text-neutral-300"
+          >
+            {link.url}
+          </a>
+        </dd>
+      </dl>
+    </div>
   );
 }
 

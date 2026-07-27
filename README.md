@@ -17,6 +17,27 @@ checklist with a status chip per item. Protected by a single shared password.
 - Bulk-paste URLs in a textarea. The server fetches each URL, parses OG/twitter
   meta tags plus hostname-specific patterns (Greenhouse, Lever, Ashby, Workday,
   SmartRecruiters, LinkedIn, Indeed, etc.) to extract company and title.
+- Postings can be pasted as annotated blocks instead of bare URLs:
+
+  ```
+  1. Raymond James
+  Role: Senior Front-End Developer (Angular)
+  Experience: 5+ Years
+  Visa: warning Limited (Case-by-case)
+  URL: https://raymondjames.wd1.myworkdayjobs.com/...
+  ```
+
+  The numbered heading is the company; `Role`, `Experience`, `Visa`, `Company`
+  and `Notes` map to columns; any other `Key: value` line is kept verbatim in
+  the `meta` JSONB column and shown in the row's Details panel. Experience is
+  read into `min_years` / `max_years` (`5+ Years`, `3-5 Years`, en dashes
+  included) and the visa line is normalized to `yes` / `maybe` / `no` /
+  `unknown`, keyed off the check / warning / cross emoji first and the wording
+  second. Blocks that supply both company and role skip the page fetch.
+- The sidebar filter card narrows the list by sponsorship bucket and by whether
+  a posting asks for more years than you have (threshold stored per browser),
+  and can sort sponsors to the top. In the Active tab, a one-click bulk action
+  drops everything above the threshold.
 - Each row has a single checkbox: unchecked = active (to do), checked =
   applied (done). Inline edit lets you fix the parsed company/title.
 - Duplicate URLs are skipped on add.
@@ -67,7 +88,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 - `DELETE /api/auth` sign out
 - `GET /api/links` list all links
 - `POST /api/links` bulk add (body: `{ text: "url1\nurl2\n..." }`)
-- `PATCH /api/links/[id]` update status / notes / company / title
+- `PATCH /api/links/[id]` update status / notes / company / title / visa
 - `DELETE /api/links/[id]` remove a link
 - `DELETE /api/links?days=4|7` (ravi only) clear stale active backlog: unapplied
   links posted more than 4 or 7 days ago

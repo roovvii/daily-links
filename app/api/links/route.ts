@@ -6,7 +6,7 @@ import {
   insertEventsBulk,
   listLinks,
 } from "@/lib/db";
-import { parseLink, splitUrls } from "@/lib/parser";
+import { parseBlocks, parseLink, sourceForUrl } from "@/lib/parser";
 import { getRoleFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -25,12 +25,32 @@ export async function POST(req: Request) {
   if (!role) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = await req.json().catch(() => ({}));
   const raw = typeof body.text === "string" ? body.text : "";
-  const urls = splitUrls(raw);
-  if (urls.length === 0) {
-    return NextResponse.json({ error: "No valid URLs found" }, { status: 400 });
+  const blocks = parseBlocks(raw);
+  if (blocks.length === 0) {
+    return NextResponse.json(
+      { error: "No valid URLs found. Each entry needs a line with an http(s) URL." },
+      { status: 400 }
+    );
   }
 
-  const parsed = await Promise.all(urls.map((u) => parseLink(u)));
+  // Only scrape the posting when the paste didn't already name the company
+  // and the role. Pasted values win over scraped ones: the list was curated
+  // by hand, and og:title is frequently just the site name.
+  const parsed = await Promise.all(
+    blocks.map(async (b) => {
+      if (b.company && b.title) {
+        return { ...b, source: sourceForUrl(b.url) };
+      }
+      const fetched = await parseLink(b.url);
+      return {
+        ...b,
+        company: b.company ?? fetched.company,
+        title: b.title ?? fetched.title,
+        source: fetched.source,
+      };
+    })
+  );
+
   const created = [];
   let skipped = 0;
   for (const p of parsed) {
@@ -39,6 +59,13 @@ export async function POST(req: Request) {
       company: p.company,
       title: p.title,
       source: p.source,
+      notes: p.notes,
+      experienceText: p.experienceText,
+      minYears: p.minYears,
+      maxYears: p.maxYears,
+      visa: p.visa,
+      visaText: p.visaText,
+      meta: p.meta,
     });
     if (row) created.push(row);
     else skipped++;

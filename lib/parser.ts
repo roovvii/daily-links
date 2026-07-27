@@ -1,8 +1,33 @@
+import type { VisaBucket } from "./types";
+
 type Parsed = {
   url: string;
   company: string | null;
   title: string | null;
   source: string | null;
+};
+
+// One pasted entry. Either a bare URL on its own line, or a block like:
+//
+//   1. Raymond James
+//   Role: Senior Front-End Developer (Angular)
+//   Experience: 5+ Years
+//   Visa: ⚠️ Limited (Case-by-case)
+//   URL: https://...
+//
+// Everything except the URL is optional, and unrecognized "Key: value"
+// lines are kept in meta rather than dropped.
+export type PastedBlock = {
+  url: string;
+  company: string | null;
+  title: string | null;
+  notes: string | null;
+  experienceText: string | null;
+  minYears: number | null;
+  maxYears: number | null;
+  visa: VisaBucket;
+  visaText: string | null;
+  meta: Record<string, string> | null;
 };
 
 const FETCH_TIMEOUT_MS = 6000;
@@ -165,8 +190,202 @@ export async function parseMany(urls: string[]): Promise<Parsed[]> {
 }
 
 export function splitUrls(text: string): string[] {
-  return text
-    .split(/[\r\n]+/)
-    .map((l) => l.trim())
-    .filter((l) => /^https?:\/\//i.test(l));
+  return parseBlocks(text).map((b) => b.url);
+}
+
+// Derive the source label without fetching the page. Used when a pasted
+// block already supplies the company and role, so there's nothing left to
+// scrape and the HTTP round-trip can be skipped.
+export function sourceForUrl(url: string): string | null {
+  return sourceFromHost(getHost(url));
+}
+
+const URL_RE = /https?:\/\/[^\s<>"']+/i;
+const HEADING_RE = /^\d{1,3}[.)]\s*(.+)$/;
+const KEY_VALUE_RE = /^([A-Za-z][A-Za-z0-9 _/&+-]{0,39}):\s*(.*)$/;
+
+function firstUrlIn(line: string): string | null {
+  const m = line.match(URL_RE);
+  if (!m) return null;
+  // Trailing sentence punctuation is never part of the URL. Query strings
+  // and fragments (?a=b, #/jobs/123) are left alone.
+  return m[0].replace(/[.,;]+$/, "");
+}
+
+// Group pasted text into one chunk of lines per posting. A new chunk starts
+// at a numbered heading ("1. Raymond James"), at a blank line once the
+// current chunk already has its URL, or at a second URL, which is what makes
+// a plain list of bare URLs still come out as one entry per line.
+function splitBlocks(text: string): string[][] {
+  const blocks: string[][] = [];
+  let cur: string[] = [];
+
+  const flush = () => {
+    if (cur.length) blocks.push(cur);
+    cur = [];
+  };
+
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    const hasUrl = cur.some((l) => firstUrlIn(l) !== null);
+    if (!line) {
+      if (hasUrl) flush();
+      continue;
+    }
+    if (HEADING_RE.test(line)) flush();
+    else if (hasUrl && firstUrlIn(line)) flush();
+    cur.push(line);
+  }
+  flush();
+  return blocks;
+}
+
+// Normalize whatever the "Visa:" line said into a filterable bucket. The
+// emoji is the strongest signal since that's what the list is annotated
+// with; wording is the fallback for lines typed without one.
+export function normalizeVisa(raw: string | null | undefined): VisaBucket {
+  if (!raw) return "unknown";
+  if (raw.includes("❌") || raw.includes("🚫")) return "no";
+  if (raw.includes("✅")) return "yes";
+  if (raw.includes("⚠")) return "maybe";
+  const t = raw.toLowerCase();
+  if (
+    /\bno\s+(opt|sponsor|visa)|\bnot?\s+sponsor|without sponsorship|citizens?\s+only|clearance|work authorization required|must be authorized/.test(
+      t
+    )
+  )
+    return "no";
+  if (
+    /opt accepted|accepts opt|sponsorship (offered|available|provided)|will sponsor|h-?1b sponsor|sponsors\b/.test(
+      t
+    )
+  )
+    return "yes";
+  if (/case.?by.?case|check with|depends|limited|varies|possible|maybe/.test(t))
+    return "maybe";
+  return "unknown";
+}
+
+// Read an experience line into numbers. "5+ Years" -> min 5. "3-5 Years" ->
+// min 3, max 5 (en/em dashes included). "0-8+ Years" -> min 0, max 8, which
+// is right: such a posting is open to juniors. "Varies" -> nothing, and the
+// experience filter leaves those alone rather than guessing.
+export function parseYears(raw: string | null | undefined): {
+  min: number | null;
+  max: number | null;
+} {
+  if (!raw) return { min: null, max: null };
+  const t = raw.replace(/[‒-―−]/g, "-");
+  const range = t.match(/(\d{1,2})\s*-\s*(\d{1,2})/);
+  if (range) {
+    const a = Number(range[1]);
+    const b = Number(range[2]);
+    return { min: Math.min(a, b), max: Math.max(a, b) };
+  }
+  const plus = t.match(/(\d{1,2})\s*\+/);
+  if (plus) return { min: Number(plus[1]), max: null };
+  const single = t.match(/(\d{1,2})/);
+  if (single) return { min: Number(single[1]), max: null };
+  return { min: null, max: null };
+}
+
+// Which pasted field a "Key:" maps to. Anything not listed here is kept
+// verbatim in meta so an unplanned field still shows up on the link.
+function fieldForKey(key: string): string | null {
+  const k = key.trim().toLowerCase();
+  if (/^(url|link|apply|application|posting)$/.test(k)) return "url";
+  if (/^(role|title|position|job|job title)$/.test(k)) return "title";
+  if (/^(company|employer|org|organization)$/.test(k)) return "company";
+  if (/^(experience|exp|yoe|years|years of experience)$/.test(k)) return "experience";
+  if (/^(visa|sponsorship|sponsor|work authorization|work auth)$/.test(k)) return "visa";
+  if (/^(note|notes|comment|comments)$/.test(k)) return "notes";
+  return null;
+}
+
+export function parseBlocks(text: string): PastedBlock[] {
+  const out: PastedBlock[] = [];
+
+  for (const lines of splitBlocks(text)) {
+    let url: string | null = null;
+    let company: string | null = null;
+    let title: string | null = null;
+    let experienceText: string | null = null;
+    let visaText: string | null = null;
+    const notesLines: string[] = [];
+    const meta: Record<string, string> = {};
+
+    for (const line of lines) {
+      const heading = line.match(HEADING_RE);
+      if (heading) {
+        // "1. Raymond James" - the company, unless a Company: line overrides
+        // it later. If the heading itself is just a URL, treat it as one.
+        const headText = heading[1].trim();
+        const headUrl = firstUrlIn(headText);
+        if (headUrl) url = url ?? headUrl;
+        else if (!company) company = headText;
+        continue;
+      }
+      if (/^https?:\/\//i.test(line)) {
+        url = url ?? firstUrlIn(line);
+        continue;
+      }
+      const kv = line.match(KEY_VALUE_RE);
+      if (kv) {
+        const key = kv[1].trim();
+        const value = kv[2].trim();
+        if (!value) continue;
+        switch (fieldForKey(key)) {
+          case "url":
+            url = url ?? firstUrlIn(value);
+            break;
+          case "title":
+            title = title ?? value;
+            break;
+          case "company":
+            company = value;
+            break;
+          case "experience":
+            experienceText = experienceText ?? value;
+            break;
+          case "visa":
+            visaText = visaText ?? value;
+            break;
+          case "notes":
+            notesLines.push(value);
+            break;
+          default:
+            meta[key] = value;
+        }
+        continue;
+      }
+      // A loose line that isn't a heading, a URL, or a Key: value pair.
+      const loose = firstUrlIn(line);
+      if (loose) url = url ?? loose;
+      else notesLines.push(line);
+    }
+
+    if (!url) continue;
+    const years = parseYears(experienceText);
+    out.push({
+      url,
+      company,
+      title,
+      notes: notesLines.length ? notesLines.join("\n") : null,
+      experienceText,
+      minYears: years.min,
+      maxYears: years.max,
+      visa: normalizeVisa(visaText),
+      visaText,
+      meta: Object.keys(meta).length ? meta : null,
+    });
+  }
+
+  // A URL pasted twice in one go would otherwise hit the DB's unique
+  // constraint and report as a duplicate; drop the repeats here instead.
+  const seen = new Set<string>();
+  return out.filter((b) => {
+    if (seen.has(b.url)) return false;
+    seen.add(b.url);
+    return true;
+  });
 }

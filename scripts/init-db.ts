@@ -31,6 +31,16 @@ async function main() {
       snoozed_until TIMESTAMPTZ
     )
   `;
+  // Posting details parsed out of pasted blocks (Role/Experience/Visa lines).
+  // Idempotent so databases created before the feature pick them up; lib/db.ts
+  // applies the same set at runtime for deploys that never run this script.
+  await sql`ALTER TABLE links ADD COLUMN IF NOT EXISTS experience_text TEXT`;
+  await sql`ALTER TABLE links ADD COLUMN IF NOT EXISTS min_years INT`;
+  await sql`ALTER TABLE links ADD COLUMN IF NOT EXISTS max_years INT`;
+  await sql`ALTER TABLE links ADD COLUMN IF NOT EXISTS visa TEXT NOT NULL DEFAULT 'unknown'`;
+  await sql`ALTER TABLE links ADD COLUMN IF NOT EXISTS visa_text TEXT`;
+  await sql`ALTER TABLE links ADD COLUMN IF NOT EXISTS meta JSONB`;
+
   await sql`CREATE INDEX IF NOT EXISTS links_status_idx ON links (status)`;
   await sql`CREATE INDEX IF NOT EXISTS links_created_at_idx ON links (created_at DESC)`;
 
