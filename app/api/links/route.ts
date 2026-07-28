@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 
 // Windows the bulk-delete is allowed to operate on. Restricting to these
 // values keeps the endpoint from being coerced into a mass wipe.
-const ALLOWED_DELETE_DAYS = new Set([4, 7]);
+const ALLOWED_DELETE_DAYS = new Set([4, 7, 14]);
 
 export async function GET() {
   const rows = await listLinks();
@@ -85,7 +85,7 @@ export async function DELETE(req: Request) {
 
   const days = Number(new URL(req.url).searchParams.get("days"));
   if (!ALLOWED_DELETE_DAYS.has(days)) {
-    return NextResponse.json({ error: "days must be 4 or 7" }, { status: 400 });
+    return NextResponse.json({ error: "days must be 4, 7, or 14" }, { status: 400 });
   }
 
   const ids = await deleteStaleActiveLinks(days);

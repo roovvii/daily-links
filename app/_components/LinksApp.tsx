@@ -21,6 +21,11 @@ const FILTER_LABEL: Record<Filter, string> = {
   all: "All",
 };
 
+// Age windows offered by the "clear stale backlog" buttons. Must stay in
+// sync with ALLOWED_DELETE_DAYS in app/api/links/route.ts, which rejects
+// any other value so the endpoint can't be coerced into a mass wipe.
+const STALE_DAYS = [4, 7, 14] as const;
+
 // Sponsorship buckets, ordered best-first. This is also the sort order used
 // by the "sponsors first" mode, so the postings worth applying to early sit
 // at the top of the list.
@@ -628,24 +633,18 @@ export function LinksApp({
       {isAdmin && filter === "active" && (
         <div className="mb-3 flex flex-wrap items-center justify-end gap-2 text-xs">
           <span className="text-neutral-500">Clear stale backlog:</span>
-          <button
-            type="button"
-            onClick={() => bulkDelete(4)}
-            disabled={deleting}
-            title="Delete unapplied active links posted more than 4 days ago"
-            className="rounded border border-neutral-300 px-2 py-1 font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60 dark:border-neutral-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
-          >
-            Older than 4 days
-          </button>
-          <button
-            type="button"
-            onClick={() => bulkDelete(7)}
-            disabled={deleting}
-            title="Delete unapplied active links posted more than 7 days ago"
-            className="rounded border border-neutral-300 px-2 py-1 font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60 dark:border-neutral-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
-          >
-            Older than 7 days
-          </button>
+          {STALE_DAYS.map((days) => (
+            <button
+              key={days}
+              type="button"
+              onClick={() => bulkDelete(days)}
+              disabled={deleting}
+              title={`Delete unapplied active links posted more than ${days} days ago`}
+              className="rounded border border-neutral-300 px-2 py-1 font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-60 dark:border-neutral-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
+            >
+              Older than {days} days
+            </button>
+          ))}
           {deleteMsg && <span className="text-neutral-500">{deleteMsg}</span>}
         </div>
       )}
